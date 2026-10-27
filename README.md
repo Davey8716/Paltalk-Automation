@@ -25,6 +25,8 @@ The selected tab is restored on startup and stored in `%APPDATA%\PaltalkRoomOpen
 3. Choose **Regular (3 rooms)** to open populated entries from Room 1–3, or **VIP (5 rooms)** to open populated entries from Room 1–5. Enable **Open when Paltalk starts** to run the selected room queue shortly after Paltalk starts; otherwise use **Open rooms** manually. Settings, including the selected mode and automatic-opening choice, are saved automatically and can also be saved using **Save settings**.
 4. The app first queues every visible matching tile, then invokes the queued rooms in order. This lets it continue after Paltalk changes away from the Rooms view when the first room opens. Check the activity log for each invocation. **Stop** stops subsequent rooms, but cannot interrupt an invocation already in progress.
 
+Reorder rooms by dragging the ⋮⋮ handle beside a name onto another room field, or by dragging selected room text onto another field. The room moves to that position and the new order is saved. Regular mode opens the first three positions; VIP mode includes all five.
+
 Room names and the delay are stored in `%APPDATA%\PaltalkRoomOpener\room_names.json` (under the current user's profile). The app finds Paltalk windows by process name, searches for exactly named UI Automation buttons, and invokes a matching button only when it is onscreen and has positive width. A successful invocation means the button was invoked; it does not independently verify that the room joined. If a room is not found, the app logs the failure and continues with the next room. Paltalk's layout, permissions, and navigation may affect which tiles are visible; return to the Rooms view if necessary.
 
 ## Camera Opener

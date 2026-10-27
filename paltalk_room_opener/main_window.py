@@ -1,6 +1,7 @@
 """Main application window."""
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QMimeData, Qt, QTimer
+from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
     QButtonGroup, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
@@ -11,6 +12,63 @@ from . import settings
 from .automation import is_paltalk_running
 from .styles import APP_STYLE
 from .worker import CameraWorker, RoomWorker
+
+
+class RoomNameField(QLineEdit):
+    """Accept a room dragged from another room field or its handle."""
+
+    def __init__(self, index, reorder):
+        super().__init__()
+        self.room_index = index
+        self.reorder = reorder
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event):
+        if isinstance(event.source(), (RoomNameField, RoomDragHandle)):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if isinstance(event.source(), (RoomNameField, RoomDragHandle)):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        source = event.source()
+        if isinstance(source, (RoomNameField, RoomDragHandle)):
+            self.reorder(source.room_index, self.room_index)
+            # CopyAction prevents QLineEdit from deleting its selected source text.
+            event.setDropAction(Qt.DropAction.CopyAction)
+            event.accept()
+        else:
+            super().dropEvent(event)
+
+
+class RoomDragHandle(QLabel):
+    def __init__(self, index):
+        super().__init__('⋮⋮')
+        self.room_index = index
+        self.setToolTip('Drag to move this room to another position')
+        self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.start_position = event.position().toPoint()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if (event.buttons() & Qt.MouseButton.LeftButton and hasattr(self, 'start_position')
+                and (event.position().toPoint() - self.start_position).manhattanLength() >= 10):
+            drag = QDrag(self)
+            mime = QMimeData()
+            mime.setText('room')
+            drag.setMimeData(mime)
+            drag.exec(Qt.DropAction.CopyAction)
+        else:
+            super().mouseMoveEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -37,16 +95,19 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(38, 32, 38, 32)
         layout.setSpacing(18)
-        layout.addWidget(QLabel("Enter the exact room tile names in the order you want to open them."))
+        layout.addWidget(QLabel("Enter exact room names. Drag a ⋮⋮ handle or selected text to reorder."))
 
         form = QFormLayout()
         self.rooms = []
         self.room_labels = []
         for index in range(5):
-            field = QLineEdit()
+            field = RoomNameField(index, self.reorder_rooms)
             field.setPlaceholderText(f"Room {index + 1} name")
             label = QLabel(f"Room {index + 1}:")
-            form.addRow(label, field)
+            row = QHBoxLayout()
+            row.addWidget(RoomDragHandle(index))
+            row.addWidget(field)
+            form.addRow(label, row)
             self.rooms.append(field)
             self.room_labels.append(label)
         self.delay = QDoubleSpinBox()
@@ -242,6 +303,17 @@ class MainWindow(QMainWindow):
 
     def selected_mode(self):
         return "vip" if self.vip_button.isChecked() else "regular"
+
+    def reorder_rooms(self, source, destination):
+        if source == destination or not (0 <= source < len(self.rooms) and 0 <= destination < len(self.rooms)):
+            return
+        names = [field.text() for field in self.rooms]
+        if not names[source].strip():
+            return
+        names.insert(destination, names.pop(source))
+        for field, name in zip(self.rooms, names):
+            field.setText(name)
+        self.save_current_settings()
 
     def selected_room_names(self):
         room_limit = 5 if self.selected_mode() == "vip" else 3

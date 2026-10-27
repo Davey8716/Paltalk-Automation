@@ -14,6 +14,8 @@ python -m venv .venv
 .\.venv\Scripts\python main.py
 ```
 
+If `main.py` is launched with a different Python that lacks `pythonnet`, it will use the project's `.venv` automatically when that environment exists.
+
 ## Use
 
 1. Start Paltalk and display the My Rooms / Rooms view containing the room tiles. Keep the relevant tiles visible and Paltalk available while the app runs.
@@ -22,3 +24,9 @@ python -m venv .venv
 4. The app first queues every visible matching tile, then invokes the queued rooms in order. This lets it continue after Paltalk changes away from the Rooms view when the first room opens. Check the activity log for each invocation. **Stop** stops subsequent rooms, but cannot interrupt an invocation already in progress.
 
 Room names and the delay are stored in `%APPDATA%\PaltalkRoomOpener\room_names.json` (under the current user's profile). The app finds Paltalk windows by process name, searches for exactly named UI Automation buttons, and invokes a matching button only when it is onscreen and has positive width. A successful invocation means the button was invoked; it does not independently verify that the room joined. If a room is not found, the app logs the failure and continues with the next room. Paltalk's layout, permissions, and navigation may affect which tiles are visible; return to the Rooms view if necessary.
+
+## Camera Opener
+
+Enter exact usernames on the Camera Opener tab, add them to the list, and save. Double-click an entry to edit it. Start monitoring manually, or enable **Start when Paltalk starts**. Camera settings are stored separately in `%APPDATA%\PaltalkRoomOpener\camera_names.json`; edits take effect when monitoring is next started.
+
+Display a room with its On Cam heading and member rows visible and unobscured. The watcher uses Windows OCR to read the visible list and UI Automation to invoke the camera button beside a matching name. It checks the row again before invoking and skips uncertain matches. It does not scroll or monitor rooms that are not displayed. OCR errors can prevent a match, particularly for similar letters; the log reports names it cannot find. The current Paltalk blue camera and green open-view icons are used to distinguish the states, so theme or interface changes can affect detection. An invocation does not itself confirm that the video opened. Stop monitoring before manually rearranging windows if the list cannot remain unobscured.

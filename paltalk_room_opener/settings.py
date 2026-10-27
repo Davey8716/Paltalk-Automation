@@ -7,6 +7,19 @@ from pathlib import Path
 
 APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "PaltalkRoomOpener"
 SETTINGS_PATH = APP_DATA_DIR / "room_names.json"
+CAMERA_SETTINGS_PATH = APP_DATA_DIR / "camera_names.json"
+
+
+def load_camera_settings():
+    try:
+        return json.loads(CAMERA_SETTINGS_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+
+
+def save_camera_settings(names, start_on_paltalk):
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    CAMERA_SETTINGS_PATH.write_text(json.dumps({"usernames": names, "start_on_paltalk": start_on_paltalk}, indent=2), encoding="utf-8")
 
 
 def load_settings():

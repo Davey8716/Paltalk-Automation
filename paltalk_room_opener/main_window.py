@@ -1,16 +1,16 @@
 """Main application window."""
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QButtonGroup, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMainWindow, QMessageBox, QPlainTextEdit, QPushButton,
+    QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
     QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import settings
 from .automation import is_paltalk_running
 from .styles import APP_STYLE
-from .worker import RoomWorker
+from .worker import CameraWorker, RoomWorker
 
 
 class MainWindow(QMainWindow):
@@ -23,6 +23,9 @@ class MainWindow(QMainWindow):
         self.resize(1000, 720)
         self.setMinimumSize(850, 620)
         self.worker = None
+        self.camera_worker = None
+        self.camera_restart_pending = False
+        self.camera_auto_handled = False
         self.auto_open_pending = False
         self.auto_open_attempts_remaining = 0
         self.auto_open_handled_for_session = False
@@ -86,6 +89,7 @@ class MainWindow(QMainWindow):
         self.log.setReadOnly(True)
         layout.addWidget(self.log)
         tabs.addTab(page, "Room Opener")
+        self.create_camera_tab(tabs)
         self.setCentralWidget(tabs)
 
         self.save_button.clicked.connect(self.save_current_settings)
@@ -167,11 +171,16 @@ class MainWindow(QMainWindow):
             self.auto_open_pending = False
             self.auto_open_attempts_remaining = 0
             self.auto_open_handled_for_session = False
+            self.camera_auto_handled = False
             return
 
         if not self.paltalk_was_running:
             self.paltalk_was_running = True
             self.log.appendPlainText("Paltalk detected.")
+        if self.camera_auto.isChecked() and not self.camera_auto_handled:
+            self.camera_auto_handled = True
+            if not self.camera_worker:
+                self.start_cameras(automatic=True)
         if (
             self.auto_open_button.isChecked()
             and not self.auto_open_handled_for_session
@@ -257,7 +266,147 @@ class MainWindow(QMainWindow):
         self.worker = None
 
     def closeEvent(self, event):
+        self.camera_restart_pending = False
+        if self.camera_worker and self.camera_worker.isRunning():
+            self.camera_worker.requestInterruption()
+            self.camera_worker.wait()
         if self.worker and self.worker.isRunning():
             self.worker.requestInterruption()
             self.worker.wait()
         event.accept()
+
+    def create_camera_tab(self, tabs):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(38, 32, 38, 32)
+        layout.addWidget(QLabel('Monitor usernames in the visible On Cam list of the current room.'))
+        self.camera_names = QListWidget()
+        self.camera_names.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.camera_names.customContextMenuRequested.connect(self.camera_name_menu)
+        layout.addWidget(self.camera_names)
+        entry = QHBoxLayout()
+        self.camera_entry = QLineEdit()
+        self.camera_entry.setPlaceholderText('Exact Paltalk username')
+        add = QPushButton('Add')
+        remove = QPushButton('Remove selected')
+        entry.addWidget(self.camera_entry)
+        entry.addWidget(add)
+        entry.addWidget(remove)
+        layout.addLayout(entry)
+        controls = QHBoxLayout()
+        self.camera_auto = QPushButton('Start when Paltalk starts')
+        self.camera_auto.setObjectName('autoOpenButton')
+        self.camera_auto.setCheckable(True)
+        save = QPushButton('Save settings')
+        self.camera_start = QPushButton('Start')
+        self.camera_stop = QPushButton('Stop')
+        self.camera_stop.setEnabled(False)
+        for button in (self.camera_auto, save, self.camera_start, self.camera_stop):
+            controls.addWidget(button)
+        layout.addLayout(controls)
+        self.camera_log = QPlainTextEdit()
+        self.camera_log.setReadOnly(True)
+        layout.addWidget(self.camera_log)
+        tabs.addTab(page, 'Camera Opener')
+        try:
+            data = settings.load_camera_settings()
+            names = data.get('usernames', [])
+            if isinstance(names, list):
+                self.camera_names.addItems([name for name in names if isinstance(name, str) and name.strip()])
+                for index in range(self.camera_names.count()):
+                    item = self.camera_names.item(index)
+                    item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.camera_auto.setChecked(bool(data.get('start_on_paltalk', False)))
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            self.camera_log.appendPlainText(f'Could not load camera settings: {exc}')
+        add.clicked.connect(self.add_camera_name)
+        self.camera_entry.returnPressed.connect(self.add_camera_name)
+        remove.clicked.connect(self.remove_camera_name)
+        save.clicked.connect(self.save_camera_settings)
+        self.camera_auto.toggled.connect(self.camera_auto_changed)
+        self.camera_start.clicked.connect(self.start_cameras)
+        self.camera_stop.clicked.connect(self.stop_cameras)
+
+    def camera_username_list(self):
+        return [self.camera_names.item(i).text().strip() for i in range(self.camera_names.count())]
+
+    def add_camera_name(self):
+        name = self.camera_entry.text().strip()
+        if name and name.casefold() not in {n.casefold() for n in self.camera_username_list()}:
+            self.camera_names.addItem(name)
+            item = self.camera_names.item(self.camera_names.count() - 1)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            self.camera_entry.clear()
+
+    def remove_camera_name(self):
+        items = self.camera_names.selectedItems()
+        if items:
+            self.delete_camera_name(items[0])
+
+    def camera_name_menu(self, position):
+        item = self.camera_names.itemAt(position)
+        if item is None:
+            return
+        menu = QMenu(self.camera_names)
+        delete_action = menu.addAction('Delete username')
+        if menu.exec(self.camera_names.viewport().mapToGlobal(position)) == delete_action:
+            self.delete_camera_name(item)
+
+    def delete_camera_name(self, item):
+        row = self.camera_names.row(item)
+        removed = self.camera_names.takeItem(row)
+        if not self.save_camera_settings():
+            self.camera_names.insertItem(row, removed)
+        elif self.camera_worker:
+            self.camera_restart_pending = bool(self.camera_username_list())
+            self.camera_worker.requestInterruption()
+            self.camera_stop.setEnabled(False)
+            self.camera_log.appendPlainText('Updating monitored usernames...')
+
+    def save_camera_settings(self):
+        try:
+            settings.save_camera_settings(self.camera_username_list(), self.camera_auto.isChecked())
+            self.camera_log.appendPlainText('Camera settings saved.')
+            return True
+        except OSError as exc:
+            QMessageBox.warning(self, 'Camera settings', f'Could not save settings: {exc}')
+            return False
+
+    def camera_auto_changed(self, enabled):
+        self.save_camera_settings()
+        if enabled:
+            self.camera_auto_handled = False
+            self.check_for_paltalk_start()
+
+    def start_cameras(self, automatic=False):
+        if self.camera_worker:
+            return
+        names = self.camera_username_list()
+        if not names:
+            self.camera_log.appendPlainText('Add at least one username before starting.')
+            return
+        if not self.save_camera_settings():
+            return
+        self.camera_worker = CameraWorker(names)
+        self.camera_worker.message.connect(self.camera_log.appendPlainText)
+        self.camera_worker.finished.connect(self.cameras_finished)
+        self.camera_start.setEnabled(False)
+        self.camera_stop.setEnabled(True)
+        self.camera_log.appendPlainText('Camera monitoring started. Keep the On Cam list visible.')
+        self.camera_worker.start()
+
+    def stop_cameras(self):
+        self.camera_restart_pending = False
+        if self.camera_worker:
+            self.camera_worker.requestInterruption()
+            self.camera_stop.setEnabled(False)
+            self.camera_log.appendPlainText('Stopping camera monitoring...')
+
+    def cameras_finished(self):
+        self.camera_worker = None
+        self.camera_start.setEnabled(True)
+        self.camera_stop.setEnabled(False)
+        self.camera_log.appendPlainText('Camera monitoring stopped.')
+        if self.camera_restart_pending:
+            self.camera_restart_pending = False
+            self.start_cameras()

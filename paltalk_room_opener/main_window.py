@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 from . import settings
 from .automation import is_paltalk_running
 from .styles import APP_STYLE
-from .worker import CameraWorker, RoomWorker
+from .worker import CameraWorker, CloseRoomWorker, RoomWorker
 
 
 class RoomNameField(QLineEdit):
@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
         self.resize(1000, 720)
         self.setMinimumSize(850, 620)
         self.worker = None
+        self.close_room_worker = None
         self.camera_worker = None
         self._closing_pending = False
         self._quitting = False
@@ -103,16 +104,25 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         self.rooms = []
         self.room_labels = []
+        self.close_room_buttons = []
         for index in range(5):
             field = RoomNameField(index, self.reorder_rooms)
             field.setPlaceholderText(f"Room {index + 1} name")
             label = QLabel(f"Room {index + 1}:")
             row = QHBoxLayout()
             row.addWidget(RoomDragHandle(index))
+            close_button = QPushButton("×")
+            close_button.setObjectName("closeRoomButton")
+            close_button.setToolTip(f"Close the Paltalk room in Room {index + 1}")
+            close_button.setAccessibleName(f"Close Room {index + 1}")
+            close_button.clicked.connect(lambda checked=False, i=index: self.close_configured_room(i))
+            row.addWidget(close_button)
+            row.addWidget(label)
             row.addWidget(field)
-            form.addRow(label, row)
+            form.addRow(row)
             self.rooms.append(field)
             self.room_labels.append(label)
+            self.close_room_buttons.append(close_button)
         self.delay = QDoubleSpinBox()
         self.delay.setRange(5, 60)
         self.delay.setValue(5)
@@ -344,6 +354,25 @@ class MainWindow(QMainWindow):
     def selected_mode(self):
         return "vip" if self.vip_button.isChecked() else "regular"
 
+    def close_configured_room(self, index):
+        name = self.rooms[index].text().strip()
+        if not name:
+            self.log.appendPlainText(f"Enter a room name in Room {index + 1} before closing it.")
+            return
+        if self.close_room_worker:
+            return
+        self.close_room_worker = CloseRoomWorker(name)
+        self.close_room_worker.message.connect(self.log.appendPlainText)
+        self.close_room_worker.finished.connect(self.close_room_finished)
+        for button in self.close_room_buttons:
+            button.setEnabled(False)
+        self.close_room_worker.start()
+
+    def close_room_finished(self):
+        self.close_room_worker = None
+        for button in self.close_room_buttons:
+            button.setEnabled(True)
+
     def reorder_rooms(self, source, destination):
         if source == destination or not (0 <= source < len(self.rooms) and 0 <= destination < len(self.rooms)):
             return
@@ -397,6 +426,8 @@ class MainWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             self.worker.requestInterruption()
             running = True
+        if self.close_room_worker and self.close_room_worker.isRunning():
+            running = True
         if running:
             event.ignore()
             if not self._closing_pending:
@@ -414,7 +445,8 @@ class MainWindow(QMainWindow):
 
     def _finish_close_when_stopped(self):
         if ((self.camera_worker and self.camera_worker.isRunning()) or
-                (self.worker and self.worker.isRunning())):
+                (self.worker and self.worker.isRunning()) or
+                (self.close_room_worker and self.close_room_worker.isRunning())):
             QTimer.singleShot(100, self._finish_close_when_stopped)
         else:
             self.close()

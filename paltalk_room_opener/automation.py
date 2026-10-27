@@ -16,6 +16,40 @@ def is_paltalk_running():
     )
 
 
+def close_room(name, log):
+    """Invoke the close button in the matching Paltalk room row."""
+    clr = import_module("clr")
+    gac_root = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Microsoft.NET" / "assembly" / "GAC_MSIL"
+    for assembly in ("UIAutomationClient", "UIAutomationTypes"):
+        paths = sorted((gac_root / assembly).glob(f"*/{assembly}.dll"))
+        clr.AddReference(str(paths[-1]) if paths else assembly)
+    a = import_module("System.Windows.Automation")
+    pids = {p.info["pid"] for p in psutil.process_iter(["pid", "name"])
+            if (p.info.get("name") or "").lower() == "paltalk.exe"}
+    if not pids:
+        log("Could not close room: Paltalk is not running.")
+        return
+    windows = a.AutomationElement.RootElement.FindAll(
+        a.TreeScope.Children, a.PropertyCondition(a.AutomationElement.ControlTypeProperty, a.ControlType.Window))
+    matches = []
+    for window in windows:
+        if window.Current.ProcessId not in pids:
+            continue
+        buttons = window.FindAll(a.TreeScope.Descendants,
+            a.PropertyCondition(a.AutomationElement.ControlTypeProperty, a.ControlType.Button))
+        for button in buttons:
+            current = button.Current
+            automation_id = current.AutomationId or ""
+            description = " ".join((automation_id, current.Name or "", current.HelpText or "")).casefold()
+            if name in automation_id and "close" in description:
+                matches.append(button)
+    if len(matches) != 1:
+        log(f"Could not close room: {name}. {'Multiple matching rooms found' if matches else 'No matching open room found'}.")
+        return
+    matches[0].GetCurrentPattern(a.InvokePattern.Pattern).Invoke()
+    log(f"Invoked close for room: {name}")
+
+
 def open_rooms(names, delay, log, stopped):
     """Queue visible room tiles, then invoke them in order."""
     clr = import_module("clr")

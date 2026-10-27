@@ -29,6 +29,8 @@ Closing the window keeps the app running in the Windows notification area, inclu
 
 Reorder rooms by dragging the ⋮⋮ handle beside a name onto another room field, or by dragging selected room text onto another field. The room moves to that position and the new order is saved. Regular mode opens the first three positions; VIP mode includes all five.
 
+Use the × beside a room to request that Paltalk close that room. The saved room name remains in the list. The activity log reports whether the close control was invoked or could not be identified; an invocation does not independently verify that the room closed.
+
 The delay between rooms is at least five seconds to give rooms time to load. Previously saved delays below five seconds are raised to five seconds.
 
 Room names and the delay are stored in `%APPDATA%\PaltalkRoomOpener\room_names.json` (under the current user's profile). The app finds Paltalk windows by process name, searches for exactly named UI Automation buttons, and invokes a matching button only when it is onscreen and has positive width. A successful invocation means the button was invoked; it does not independently verify that the room joined. If a room is not found, the app logs the failure and continues with the next room. Paltalk's layout, permissions, and navigation may affect which tiles are visible; return to the Rooms view if necessary.

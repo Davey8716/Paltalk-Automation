@@ -19,6 +19,10 @@ APP_STYLE = """
         border-radius: 5px; padding: 8px;
     }
     QLineEdit:focus, QDoubleSpinBox:focus { border: 2px solid #9a6cff; }
+    QLineEdit[roomOpen="true"] {
+        color: white; background: #102d3d; border: 2px solid #168ac5;
+    }
+    QLineEdit[roomOpen="true"]:focus { border: 2px solid #249bd6; }
     QListWidget#cameraNames {
         background: #000000; color: white; font-weight: 700;
         border: 1px solid #4b5568; border-radius: 5px;

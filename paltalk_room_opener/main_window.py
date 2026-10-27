@@ -375,7 +375,7 @@ class MainWindow(QMainWindow):
         return "vip" if self.vip_button.isChecked() else "regular"
 
     def refresh_room_states(self):
-        if self.room_state_worker or self._quitting or self.worker or self.close_room_worker:
+        if self.room_state_worker or self._quitting or self.close_room_worker:
             return
         self.room_state_worker = RoomStateWorker([field.text().strip() for field in self.rooms])
         self.room_state_worker.result.connect(self.room_states_received)
@@ -383,7 +383,7 @@ class MainWindow(QMainWindow):
         self.room_state_worker.start()
 
     def room_states_received(self, states):
-        self.room_states = None if self.worker or self.close_room_worker else states
+        self.room_states = None if self.close_room_worker else states
         self.update_room_buttons()
 
     def room_state_finished(self):
@@ -401,6 +401,10 @@ class MainWindow(QMainWindow):
             name = field.text().strip()
             known = self.room_states is not None and name in self.room_states
             is_open = known and self.room_states[name]
+            if field.property("roomOpen") != bool(is_open):
+                field.setProperty("roomOpen", bool(is_open))
+                field.style().unpolish(field)
+                field.style().polish(field)
             action = "Close" if is_open else "Open"
             button.setText(action)
             button.setAccessibleName(f"{action} Room {index + 1}")
@@ -471,7 +475,6 @@ class MainWindow(QMainWindow):
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.worker = None
-        self.room_states = None
         self.update_room_buttons()
         self.refresh_room_states()
 

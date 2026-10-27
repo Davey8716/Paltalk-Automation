@@ -291,9 +291,9 @@ class MainWindow(QMainWindow):
         if automatic:
             self.worker.completed.connect(self.automatic_open_finished)
         self.worker.finished.connect(self.finished)
-        self.start_button.setEnabled(False)
+        self.set_button_enabled(self.start_button, False)
         for button in self.open_room_buttons:
-            button.setEnabled(False)
+            self.set_button_enabled(button, False)
         self.stop_button.setEnabled(True)
         prefix = "Automatically starting" if automatic else "Starting"
         self.log.appendPlainText(f"{prefix} {description}...")
@@ -389,6 +389,13 @@ class MainWindow(QMainWindow):
     def room_state_finished(self):
         self.room_state_worker = None
 
+    @staticmethod
+    def set_button_enabled(button, enabled):
+        # Disabling a focused button otherwise moves focus to the next field.
+        if not enabled and button.hasFocus():
+            button.clearFocus()
+        button.setEnabled(enabled)
+
     def update_room_buttons(self):
         for index, (field, button) in enumerate(zip(self.rooms, self.open_room_buttons)):
             name = field.text().strip()
@@ -398,7 +405,7 @@ class MainWindow(QMainWindow):
             button.setText(action)
             button.setAccessibleName(f"{action} Room {index + 1}")
             button.setToolTip(f"{action} the Paltalk room in Room {index + 1}" if known else "Room status unavailable")
-            button.setEnabled(bool(name and known and not self.worker and not self.close_room_worker))
+            self.set_button_enabled(button, bool(name and known and not self.worker and not self.close_room_worker))
 
     def toggle_configured_room(self, index):
         name = self.rooms[index].text().strip()

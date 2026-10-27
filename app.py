@@ -9,7 +9,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QApplication, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QMainWindow, QMessageBox, QPushButton, QPlainTextEdit,
-    QTabWidget, QVBoxLayout, QWidget,
+    QButtonGroup, QTabWidget, QVBoxLayout, QWidget,
 )
 import psutil
 
@@ -143,6 +143,9 @@ class MainWindow(QMainWindow):
             QLabel, QPushButton, QLineEdit, QDoubleSpinBox, QPlainTextEdit {
                 color: white; font-weight: 700;
             }
+            QLabel[roomAvailable="false"], QLineEdit[roomAvailable="false"] {
+                color: #7d8594;
+            }
             QLineEdit, QDoubleSpinBox, QPlainTextEdit {
                 background: #11151c; border: 1px solid #4b5568;
                 border-radius: 5px; padding: 8px;
@@ -154,6 +157,12 @@ class MainWindow(QMainWindow):
             }
             QPushButton:hover { background: #8256d8; }
             QPushButton:disabled { background: #454b57; color: #c4c7cf; }
+            QPushButton#regularModeButton, QPushButton#vipModeButton {
+                background: #343b48;
+            }
+            QPushButton#regularModeButton:checked, QPushButton#vipModeButton:checked {
+                background: #6d3cc8;
+            }
         """)
 
         tabs = QTabWidget()
@@ -164,11 +173,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Enter the exact room tile names in the order you want to open them."))
         form = QFormLayout()
         self.rooms = []
+        self.room_labels = []
         for i in range(5):
             field = QLineEdit()
             field.setPlaceholderText(f"Room {i + 1} name")
-            form.addRow(f"Room {i + 1}:", field)
+            label = QLabel(f"Room {i + 1}:")
+            form.addRow(label, field)
             self.rooms.append(field)
+            self.room_labels.append(label)
         self.delay = QDoubleSpinBox()
         self.delay.setRange(0, 60)
         self.delay.setValue(3)
@@ -177,10 +189,23 @@ class MainWindow(QMainWindow):
         layout.addLayout(form)
         layout.addWidget(QLabel("Open Paltalk and display the My Rooms / Rooms view before starting."))
         buttons = QHBoxLayout()
+        self.regular_button = QPushButton("Regular (3 rooms)")
+        self.vip_button = QPushButton("VIP (5 rooms)")
+        self.regular_button.setObjectName("regularModeButton")
+        self.vip_button.setObjectName("vipModeButton")
+        for button in (self.regular_button, self.vip_button):
+            button.setCheckable(True)
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
+        self.mode_group.addButton(self.regular_button)
+        self.mode_group.addButton(self.vip_button)
+        self.regular_button.setChecked(True)
         self.save_button = QPushButton("Save settings")
         self.start_button = QPushButton("Open rooms")
         self.stop_button = QPushButton("Stop")
         self.stop_button.setEnabled(False)
+        buttons.addWidget(self.regular_button)
+        buttons.addWidget(self.vip_button)
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.start_button)
         buttons.addWidget(self.stop_button)
@@ -193,7 +218,9 @@ class MainWindow(QMainWindow):
         self.save_button.clicked.connect(self.save_settings)
         self.start_button.clicked.connect(self.start)
         self.stop_button.clicked.connect(self.stop)
+        self.mode_group.buttonClicked.connect(self.update_room_limit_appearance)
         self.load_settings()
+        self.update_room_limit_appearance()
 
     def load_settings(self):
         try:
@@ -208,6 +235,11 @@ class MainWindow(QMainWindow):
             for index, field in enumerate(self.rooms, start=1):
                 field.setText(str(saved_rooms.get(f"room_{index}", "")))
             self.delay.setValue(float(data.get("delay", 3)))
+            if data.get("mode") == "vip":
+                self.vip_button.setChecked(True)
+            else:
+                self.regular_button.setChecked(True)
+            self.update_room_limit_appearance()
         except FileNotFoundError:
             pass
         except (OSError, ValueError, TypeError, AttributeError) as exc:
@@ -222,6 +254,7 @@ class MainWindow(QMainWindow):
                     for index, field in enumerate(self.rooms, start=1)
                 },
                 "delay": self.delay.value(),
+                "mode": self.selected_mode(),
             }, indent=2), encoding="utf-8")
             self.log.appendPlainText("Settings saved.")
             return True
@@ -230,7 +263,8 @@ class MainWindow(QMainWindow):
             return False
 
     def start(self):
-        names = [field.text().strip() for field in self.rooms if field.text().strip()]
+        mode = self.selected_mode()
+        names = self.selected_room_names()
         if not names:
             QMessageBox.warning(self, "No rooms", "Enter at least one room name.")
             return
@@ -241,8 +275,27 @@ class MainWindow(QMainWindow):
         self.worker.finished.connect(self.finished)
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
-        self.log.appendPlainText("Starting room opener...")
+        self.log.appendPlainText(
+            f"Starting {mode.title()} room opener with {len(names)} populated room(s)..."
+        )
         self.worker.start()
+
+    def selected_mode(self):
+        return "vip" if self.vip_button.isChecked() else "regular"
+
+    def selected_room_names(self):
+        room_limit = 5 if self.selected_mode() == "vip" else 3
+        return [field.text().strip() for field in self.rooms[:room_limit] if field.text().strip()]
+
+    def update_room_limit_appearance(self):
+        rooms_available = self.selected_mode() == "vip"
+        for label, field in zip(self.room_labels[3:], self.rooms[3:]):
+            label.setProperty("roomAvailable", rooms_available)
+            field.setProperty("roomAvailable", rooms_available)
+            label.style().unpolish(label)
+            label.style().polish(label)
+            field.style().unpolish(field)
+            field.style().polish(field)
 
     def stop(self):
         if self.worker:

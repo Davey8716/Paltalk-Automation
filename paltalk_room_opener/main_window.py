@@ -3,9 +3,9 @@
 from PySide6.QtCore import QMimeData, Qt, QTimer
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
-    QButtonGroup, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
+    QApplication, QButtonGroup, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
-    QTabWidget, QVBoxLayout, QWidget,
+    QStyle, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
 
 from . import settings
@@ -83,6 +83,8 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.camera_worker = None
         self._closing_pending = False
+        self._quitting = False
+        self.tray_icon = None
         self.camera_restart_pending = False
         self.camera_auto_handled = False
         self.auto_open_pending = False
@@ -112,8 +114,8 @@ class MainWindow(QMainWindow):
             self.rooms.append(field)
             self.room_labels.append(label)
         self.delay = QDoubleSpinBox()
-        self.delay.setRange(0, 60)
-        self.delay.setValue(3)
+        self.delay.setRange(5, 60)
+        self.delay.setValue(5)
         self.delay.setSuffix(" seconds")
         form.addRow("Delay between rooms:", self.delay)
         layout.addLayout(form)
@@ -172,6 +174,36 @@ class MainWindow(QMainWindow):
         self.paltalk_start_timer.timeout.connect(self.check_for_paltalk_start)
         self.paltalk_start_timer.start()
         self.check_for_paltalk_start()
+        self.setup_tray()
+
+    def setup_tray(self):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+        self.setWindowIcon(icon)
+        self.tray_icon = QSystemTrayIcon(icon, self)
+        self.tray_icon.setToolTip("Paltalk Automation")
+        menu = QMenu(self)
+        menu.addAction("Open Paltalk Automation", self.restore_from_tray)
+        menu.addSeparator()
+        menu.addAction("Quit", self.quit_application)
+        self.tray_icon.setContextMenu(menu)
+        self.tray_icon.activated.connect(self.tray_activated)
+        self.tray_icon.show()
+
+    def restore_from_tray(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger,
+                      QSystemTrayIcon.ActivationReason.DoubleClick):
+            self.restore_from_tray()
+
+    def quit_application(self):
+        self._quitting = True
+        self.close()
 
     def load_saved_settings(self):
         try:
@@ -184,7 +216,7 @@ class MainWindow(QMainWindow):
                 }
             for index, field in enumerate(self.rooms, start=1):
                 field.setText(str(saved_rooms.get(f"room_{index}", "")))
-            self.delay.setValue(float(data.get("delay", 3)))
+            self.delay.setValue(float(data.get("delay", 5)))
             (self.vip_button if data.get("mode") == "vip" else self.regular_button).setChecked(True)
             self.auto_open_button.setChecked(bool(data.get("open_on_paltalk_start", False)))
         except (OSError, ValueError, TypeError, AttributeError) as exc:
@@ -352,6 +384,10 @@ class MainWindow(QMainWindow):
         self.worker = None
 
     def closeEvent(self, event):
+        if not self._quitting and self.tray_icon is not None:
+            self.hide()
+            event.ignore()
+            return
         self.camera_restart_pending = False
         self.auto_open_pending = False
         running = False
@@ -370,7 +406,11 @@ class MainWindow(QMainWindow):
                 self.camera_log.appendPlainText('Stopping background work before closing...')
                 QTimer.singleShot(100, self._finish_close_when_stopped)
             return
+        if self.tray_icon is not None:
+            self.tray_icon.hide()
         event.accept()
+        if self._quitting:
+            QTimer.singleShot(0, QApplication.quit)
 
     def _finish_close_when_stopped(self):
         if ((self.camera_worker and self.camera_worker.isRunning()) or

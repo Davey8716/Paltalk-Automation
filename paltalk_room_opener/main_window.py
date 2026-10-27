@@ -357,8 +357,17 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(38, 32, 38, 32)
-        layout.addWidget(QLabel('Monitor usernames in the visible On Cam list of the current room.'))
+        layout.addWidget(QLabel('Monitor up to 200 usernames in the visible On Cam list of the current room.'))
+        sort_controls = QHBoxLayout()
+        sort_controls.addStretch()
+        self.camera_alphabetical = QPushButton('Alphabetical')
+        self.camera_alphabetical.setObjectName('cameraAlphabetical')
+        self.camera_alphabetical.setCheckable(True)
+        sort_controls.addWidget(self.camera_alphabetical)
+        layout.addLayout(sort_controls)
         self.camera_names = QListWidget()
+        self.camera_next_order = 0
+        self.camera_names.setObjectName('cameraNames')
         self.camera_names.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.camera_names.customContextMenuRequested.connect(self.camera_name_menu)
         layout.addWidget(self.camera_names)
@@ -394,10 +403,14 @@ class MainWindow(QMainWindow):
                 for index in range(self.camera_names.count()):
                     item = self.camera_names.item(index)
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                    item.setData(Qt.ItemDataRole.UserRole, self.camera_next_order)
+                    self.camera_next_order += 1
             self.camera_auto.setChecked(bool(data.get('start_on_paltalk', False)))
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.camera_log.appendPlainText(f'Could not load camera settings: {exc}')
         add.clicked.connect(self.add_camera_name)
+        self.camera_alphabetical.toggled.connect(self.sort_camera_names)
+        self.camera_names.itemChanged.connect(self.camera_name_changed)
         self.camera_entry.returnPressed.connect(self.add_camera_name)
         remove.clicked.connect(self.remove_camera_name)
         save.clicked.connect(self.save_camera_settings)
@@ -406,7 +419,21 @@ class MainWindow(QMainWindow):
         self.camera_stop.clicked.connect(self.stop_cameras)
 
     def camera_username_list(self):
-        return [self.camera_names.item(i).text().strip() for i in range(self.camera_names.count())]
+        items = [self.camera_names.item(i) for i in range(self.camera_names.count())]
+        return [item.text().strip() for item in sorted(items, key=lambda item: item.data(Qt.ItemDataRole.UserRole))]
+
+    def sort_camera_names(self, alphabetical):
+        items = [self.camera_names.takeItem(0) for _ in range(self.camera_names.count())]
+        if alphabetical:
+            items.sort(key=lambda item: (item.text().casefold(), item.data(Qt.ItemDataRole.UserRole)))
+        else:
+            items.sort(key=lambda item: item.data(Qt.ItemDataRole.UserRole))
+        for item in items:
+            self.camera_names.addItem(item)
+
+    def camera_name_changed(self, _item):
+        if self.camera_alphabetical.isChecked():
+            self.sort_camera_names(True)
 
     def save_selected_tab(self, index):
         try:
@@ -417,9 +444,18 @@ class MainWindow(QMainWindow):
     def add_camera_name(self):
         name = self.camera_entry.text().strip()
         if name and name.casefold() not in {n.casefold() for n in self.camera_username_list()}:
+            if self.camera_names.count() >= 200:
+                QMessageBox.warning(self, 'Camera usernames', 'The list can contain up to 200 usernames.')
+                return
+            self.camera_names.blockSignals(True)
             self.camera_names.addItem(name)
             item = self.camera_names.item(self.camera_names.count() - 1)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            item.setData(Qt.ItemDataRole.UserRole, self.camera_next_order)
+            self.camera_next_order += 1
+            self.camera_names.blockSignals(False)
+            if self.camera_alphabetical.isChecked():
+                self.sort_camera_names(True)
             self.camera_entry.clear()
 
     def remove_camera_name(self):

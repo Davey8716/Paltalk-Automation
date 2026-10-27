@@ -31,6 +31,6 @@ Room names and the delay are stored in `%APPDATA%\PaltalkRoomOpener\room_names.j
 
 ## Camera Opener
 
-Enter exact usernames on the Camera Opener tab, add them to the list, and save. Double-click an entry to edit it. Start monitoring manually, or enable **Start when Paltalk starts**. Camera settings are stored separately in `%APPDATA%\PaltalkRoomOpener\camera_names.json`; edits take effect when monitoring is next started.
+Enter up to 200 exact usernames on the Camera Opener tab, add them to the list, and save. Double-click an entry to edit it. Start monitoring manually, or enable **Start when Paltalk starts**. Camera settings are stored separately in `%APPDATA%\PaltalkRoomOpener\camera_names.json`; edits take effect when monitoring is next started.
 
 Display a room with its On Cam heading and member rows visible and unobscured. The watcher uses Windows OCR to read the visible list and UI Automation to invoke the camera button beside a matching name. It checks the row again before invoking and skips uncertain matches. It does not scroll or monitor rooms that are not displayed. OCR errors can prevent a match, particularly for similar letters; the log reports names it cannot find. The current Paltalk blue camera and green open-view icons are used to distinguish the states, so theme or interface changes can affect detection. An invocation does not itself confirm that the video opened. Stop monitoring before manually rearranging windows if the list cannot remain unobscured.

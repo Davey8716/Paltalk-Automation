@@ -29,7 +29,7 @@ Closing the window keeps the app running in the Windows notification area, inclu
 
 Reorder rooms by dragging the ⋮⋮ handle beside a name onto another room field, or by dragging selected room text onto another field. The room moves to that position and the new order is saved. Regular mode opens the first three positions; VIP mode includes all five.
 
-Use the × beside a room to request that Paltalk close that room. The saved room name remains in the list. The activity log reports whether the close control was invoked or could not be identified; an invocation does not independently verify that the room closed.
+Use the **Open** or **Close** button beside a room name to manage that room on its own. The button reflects the detected room state and the saved room name remains in the list. Opening still requires the tile to be visible in Paltalk's My Rooms / Rooms view. The activity log reports whether a control was invoked; an invocation does not independently verify the result.
 
 The delay between rooms is at least five seconds to give rooms time to load. Previously saved delays below five seconds are raised to five seconds.
 

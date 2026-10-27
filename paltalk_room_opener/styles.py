@@ -29,8 +29,6 @@ APP_STYLE = """
         padding: 10px 18px;
     }
     QPushButton:hover { background: #249bd6; }
-    QPushButton#closeRoomButton { background: #703b45; padding: 4px 9px; }
-    QPushButton#closeRoomButton:hover { background: #a44d5c; }
     QPushButton:disabled { background: #454b57; color: #c4c7cf; }
     QPushButton#regularModeButton, QPushButton#vipModeButton { background: #343b48; }
     QPushButton#autoOpenButton { background: #168ac5; }

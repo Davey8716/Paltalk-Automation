@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QThread, Signal
 
-from .automation import close_room, open_rooms
+from .automation import close_room, open_rooms, room_states
 from .camera_automation import watch_cameras
 
 
@@ -36,6 +36,20 @@ class CloseRoomWorker(QThread):
             close_room(self.name, self.message.emit)
         except Exception as exc:
             self.message.emit(f"Could not close room: {self.name}. {exc}")
+
+
+class RoomStateWorker(QThread):
+    result = Signal(object)
+
+    def __init__(self, names):
+        super().__init__()
+        self.names = names
+
+    def run(self):
+        try:
+            self.result.emit(room_states(self.names))
+        except Exception:
+            self.result.emit(None)
 
 
 class CameraWorker(QThread):

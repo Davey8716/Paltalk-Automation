@@ -2,10 +2,19 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from paltalk_room_opener.automation import close_room
+from paltalk_room_opener.automation import close_room, room_states
 
 
 class CloseRoomTests(unittest.TestCase):
+    def test_state_uses_identified_close_buttons_and_rejects_ambiguity(self):
+        button = SimpleNamespace(Current=SimpleNamespace(AutomationId='Room close: The Garage'))
+        with patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
+             patch('paltalk_room_opener.automation._close_buttons', return_value=[button]):
+            self.assertEqual(room_states(['The Garage', 'Other']), {'The Garage': True, 'Other': False})
+        with patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
+             patch('paltalk_room_opener.automation._close_buttons', return_value=[button, button]):
+            self.assertEqual(room_states(['The Garage']), {})
+
     def test_matches_room_name_on_close_button_id(self):
         class Element:
             def __init__(self, current, children=()):
@@ -22,7 +31,7 @@ class CloseRoomTests(unittest.TestCase):
             def Invoke(self):
                 self.invoked = True
 
-        button = Element(SimpleNamespace(AutomationId='Room close: The Garage', Name='', HelpText=''))
+        button = Element(SimpleNamespace(AutomationId='Room close: The Garage', Name='', HelpText='', IsEnabled=True))
         window = Element(SimpleNamespace(ProcessId=42), [button])
         root = Element(None, [window])
         element = SimpleNamespace(RootElement=root, ControlTypeProperty=1)

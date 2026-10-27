@@ -91,6 +91,12 @@ class MainWindow(QMainWindow):
         tabs.addTab(page, "Room Opener")
         self.create_camera_tab(tabs)
         self.setCentralWidget(tabs)
+        try:
+            selected_tab = settings.load_app_state().get('selected_tab', 'room_opener')
+            tabs.setCurrentIndex(1 if selected_tab == 'camera_opener' else 0)
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            self.log.appendPlainText(f'Could not load app state: {exc}')
+        tabs.currentChanged.connect(self.save_selected_tab)
 
         self.save_button.clicked.connect(self.save_current_settings)
         self.start_button.clicked.connect(self.start)
@@ -329,6 +335,12 @@ class MainWindow(QMainWindow):
 
     def camera_username_list(self):
         return [self.camera_names.item(i).text().strip() for i in range(self.camera_names.count())]
+
+    def save_selected_tab(self, index):
+        try:
+            settings.save_app_state('camera_opener' if index == 1 else 'room_opener')
+        except OSError as exc:
+            self.log.appendPlainText(f'Could not save app state: {exc}')
 
     def add_camera_name(self):
         name = self.camera_entry.text().strip()

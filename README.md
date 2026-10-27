@@ -16,6 +16,8 @@ python -m venv .venv
 
 If `main.py` is launched with a different Python that lacks `pythonnet`, it will use the project's `.venv` automatically when that environment exists.
 
+The selected tab is restored on startup and stored in `%APPDATA%\PaltalkRoomOpener\app_state.json`.
+
 ## Use
 
 1. Start Paltalk and display the My Rooms / Rooms view containing the room tiles. Keep the relevant tiles visible and Paltalk available while the app runs.

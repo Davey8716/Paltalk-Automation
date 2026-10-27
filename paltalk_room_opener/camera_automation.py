@@ -131,6 +131,49 @@ def _row_words(lines, center, button_x, scale=1):
     return sorted(words, key=lambda word: word['left'])
 
 
+def _section_words(words, section):
+    # Queue positions are separate OCR words to the left of the nickname.
+    # Never strip digits joined to a nickname, such as 1SweeTart.
+    if (section == 'Mic Queue' and len(words) > 1 and words[0]['text'].isdigit()
+            and 0 <= words[0]['left'] <= 16
+            and words[0]['right'] < words[1]['left']):
+        return words[1:]
+    return words
+
+
+def _sections(lines, height):
+    headings = []
+    labels = (('micqueue', 'Mic Queue'), ('oncam', 'On Cam'),
+              ('chatting', None), ('members', None))
+    for line in lines:
+        normalized = _normal(line['text'])
+        for prefix, label in labels:
+            if normalized.startswith(prefix):
+                headings.append((line['top'], line['bottom'], label))
+                break
+    headings.sort(key=lambda heading: heading[0])
+    for label in ('Mic Queue', 'On Cam'):
+        if sum(heading[2] == label for heading in headings) > 1:
+            raise RuntimeError(f'{label} heading is ambiguous.')
+    sections = []
+    for index, (_, bottom, label) in enumerate(headings):
+        if label is not None:
+            end = headings[index + 1][0] if index + 1 < len(headings) else height
+            if bottom < end:
+                sections.append((label, bottom, end))
+    if not sections:
+        raise RuntimeError('Mic Queue or On Cam heading is not visible or could not be read.')
+    return sections
+
+
+def _button_section(current, button_type, y, height, sections):
+    if (current.ControlType != button_type or current.IsOffscreen or
+            'MemberContentWidget' not in current.AutomationId):
+        return None
+    matching = [label for label, start, end in sections if y >= start and y + height <= end]
+    return matching[0] if len(matching) == 1 else None
+
+
 def _row_text(words, boundary=None):
     if not words:
         return None
@@ -204,14 +247,9 @@ class CameraScanner:
             raise RuntimeError('Room member list has invalid screen bounds.')
         image = ImageGrab.grab(bbox=(left, top, left + width, top + height), all_screens=True)
         lines = _ocr(image, stopped)
-        headers = [line for line in lines if _normal(line['text']).startswith('oncam')]
-        if len(headers) != 1:
-            raise RuntimeError('On Cam heading is not visible or could not be read.')
-        start = headers[0]['bottom']
-        endings = [line['top'] for line in lines if line['top'] > start and
-                   _normal(line['text']).startswith(('chatting', 'members'))]
-        end = min(endings) if endings else height
-        self.ocr_lines = [line['text'].strip() for line in lines
+        sections = _sections(lines, height)
+        self.ocr_lines = [f"{label}: {line['text'].strip()}"
+                          for label, start, end in sections for line in lines
                           if start < (line['top'] + line['bottom']) / 2 < end]
         buttons = []
         for e in member_list.FindAll(a.TreeScope.Descendants, a.Condition.TrueCondition):
@@ -221,17 +259,20 @@ class CameraScanner:
             b = c.BoundingRectangle
             x, y = int(b.X) - left, int(b.Y) - top
             bw, bh = int(b.Width), int(b.Height)
-            if bw <= 0 or bh <= 0 or x < 0 or y < start or x + bw > width or y + bh > end:
+            if bw <= 0 or bh <= 0 or x < 0 or x + bw > width:
                 continue
-            buttons.append((y + bh / 2, _camera_state(image, x, y, bw, bh), e, x))
+            section = _button_section(c, a.ControlType.Button, y, bh, sections)
+            if section is None:
+                continue
+            buttons.append((y + bh / 2, _camera_state(image, x, y, bw, bh), e, x, section))
         # Find badge shapes after the first recognized word. Never cut through a
         # word: a merged word makes that row ambiguous instead.
         boundaries = {}
         source = image.convert('RGB')
         enhanced = source.copy()
         draw = ImageDraw.Draw(enhanced)
-        for index, (center, _, _, button_x) in enumerate(buttons):
-            words = _row_words(lines, center, button_x)
+        for index, (center, _, _, button_x, section) in enumerate(buttons):
+            words = _section_words(_row_words(lines, center, button_x), section)
             if not words:
                 continue
             top = max(0, int(center - 10))
@@ -256,24 +297,24 @@ class CameraScanner:
         third_lines = _ocr(third_image, stopped)
         rows = []
         self.ocr_comparisons = []
-        for index, (center, state, element, button_x) in enumerate(buttons):
+        for index, (center, state, element, button_x, section) in enumerate(buttons):
             if sum(abs(other[0] - center) <= 18 for other in buttons) != 1:
-                self.ocr_comparisons.append(f'row at {center:.0f}: camera buttons overlap')
+                self.ocr_comparisons.append(f'{section} row at {center:.0f}: camera buttons overlap')
                 continue
             boundary = boundaries.get(index)
-            first = _row_text(_row_words(lines, center, button_x), boundary)
-            second = _row_text(_row_words(enhanced_lines, center, button_x, scale), boundary)
-            third = _row_text(_row_words(third_lines, center, button_x, scale), boundary)
+            first = _row_text(_section_words(_row_words(lines, center, button_x), section), boundary)
+            second = _row_text(_section_words(_row_words(enhanced_lines, center, button_x, scale), section), boundary)
+            third = _row_text(_section_words(_row_words(third_lines, center, button_x, scale), section), boundary)
             readings = tuple(dict.fromkeys(value for value in (first, second, third) if value))
             if len(readings) != 1 or first is None:
                 original_words = _row_words(lines, center, button_x)
                 positions = [(word['text'], round(word['left'], 1), round(word['right'], 1))
                              for word in original_words]
                 self.ocr_comparisons.append(
-                    f'row at {center:.0f}: original={first!r}, enhanced={second!r}, color={third!r}, '
+                    f'{section} row at {center:.0f}: original={first!r}, enhanced={second!r}, color={third!r}, '
                     f'badge boundary={boundary!r}, original word positions={positions!r}')
             if readings:
-                rows.append((readings, state, element, center))
+                rows.append((readings, state, element, center, section))
         return rows
 
     def open_if_available(self, name, stopped=lambda: False, configured_names=None):
@@ -323,8 +364,8 @@ def watch_cameras(names, log, stopped):
                         status = 'not visible or ambiguous'
                     if not diagnostic_reported:
                         read = ', '.join(repr(line) for line in scanner.ocr_lines) or '(none)'
-                        detected = ', '.join(repr(_readings(row)) for row in rows) or '(none)'
-                        log(f'On Cam text read by OCR: {read}.')
+                        detected = ', '.join(f'{row[4]}: {_readings(row)!r}' for row in rows) or '(none)'
+                        log(f'Visible section text read by OCR: {read}.')
                         log(f'OCR lines matched to camera buttons: {detected}.')
                         if scanner.ocr_comparisons:
                             log('Unmatched OCR rows: ' + '; '.join(scanner.ocr_comparisons))
@@ -346,7 +387,7 @@ def watch_cameras(names, log, stopped):
                 if scanner.open_if_available(name, stopped, names):
                     log(f'Invoked camera button for {name}; check the video view to confirm it opened.')
                     # Let Paltalk finish opening the view before invoking another.
-                    for _ in range(50):
+                    for _ in range(40):
                         if stopped():
                             break
                         time.sleep(.1)

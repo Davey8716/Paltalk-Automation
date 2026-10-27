@@ -2,14 +2,15 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from PIL import Image, ImageDraw
 
 from paltalk_room_opener import settings
 from paltalk_room_opener.camera_automation import (
-    CameraScanner, _badge_boxes, _camera_state, _match_rows, _normal,
-    _ocr, _row_text, _row_words, _ScanStopped, watch_cameras,
+    CameraScanner, _badge_boxes, _button_section, _camera_state, _match_rows, _normal,
+    _ocr, _row_text, _row_words, _section_words, _sections, _ScanStopped, watch_cameras,
 )
 
 
@@ -125,6 +126,41 @@ class CameraTests(unittest.TestCase):
             {'text': 'camera', 'left': 200, 'right': 230, 'top': 12, 'bottom': 36},
         ]}]
         self.assertEqual(_row_text(_row_words(lines, 12, 100, 2)), 'sexydiva thailand')
+
+    def test_visible_section_boundaries(self):
+        lines = [{'text': 'Mic Queue 6', 'top': 0, 'bottom': 15},
+                 {'text': 'Join Queue to Talk', 'top': 20, 'bottom': 35},
+                 {'text': 'On Cam 10', 'top': 200, 'bottom': 215},
+                 {'text': 'Chatting', 'top': 500, 'bottom': 515}]
+        self.assertEqual(_sections(lines, 800), [('Mic Queue', 15, 200), ('On Cam', 215, 500)])
+        self.assertEqual(_sections(lines[2:], 800), [('On Cam', 215, 500)])
+        self.assertEqual(_sections(lines[:2], 800), [('Mic Queue', 15, 800)])
+        with self.assertRaises(RuntimeError):
+            _sections([lines[1]], 800)
+        with self.assertRaises(RuntimeError):
+            _sections([lines[0], lines[0]], 800)
+
+    def test_queue_position_is_separate_from_username(self):
+        def word(text, left, right):
+            return {'text': text, 'left': left, 'right': right}
+        for name in ('lauriec40', 'ReMarkable1960', '1SweeTart'):
+            words = [word('4', 2, 8), word(name, 18, 90)]
+            self.assertEqual(_row_text(_section_words(words, 'Mic Queue')), name)
+            self.assertEqual(_row_text(_section_words(words, 'On Cam')), '4 ' + name)
+        words = [word('1SweeTart', 18, 90)]
+        self.assertEqual(_row_text(_section_words(words, 'Mic Queue')), '1SweeTart')
+        words = [word('4', 2, 20), word('1SweeTart', 18, 90)]
+        self.assertEqual(_row_text(_section_words(words, 'Mic Queue')), '4 1SweeTart')
+        words = [word('123', 25, 50), word('O', 55, 65)]
+        self.assertEqual(_row_text(_section_words(words, 'Mic Queue')), '123 O')
+
+    def test_join_queue_button_is_not_a_camera_row(self):
+        sections = [('Mic Queue', 15, 200), ('On Cam', 215, 500)]
+        join = SimpleNamespace(ControlType='button', IsOffscreen=False, AutomationId='JoinQueueButton')
+        camera = SimpleNamespace(ControlType='button', IsOffscreen=False, AutomationId='MemberContentWidget:camera')
+        self.assertIsNone(_button_section(join, 'button', 20, 20, sections))
+        self.assertEqual(_button_section(camera, 'button', 70, 16, sections), 'Mic Queue')
+        self.assertIsNone(_button_section(camera, 'button', 195, 16, sections))
 
     def test_stop_during_delay_prevents_next_camera(self):
         class Scanner:

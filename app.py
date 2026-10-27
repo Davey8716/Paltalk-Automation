@@ -9,7 +9,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QApplication, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
     QLineEdit, QMainWindow, QMessageBox, QPushButton, QPlainTextEdit,
-    QVBoxLayout, QWidget,
+    QTabWidget, QVBoxLayout, QWidget,
 )
 import psutil
 
@@ -129,10 +129,38 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Paltalk Automation")
-        self.resize(650, 440)
+        self.resize(1000, 720)
+        self.setMinimumSize(850, 620)
         self.worker = None
-        root = QWidget()
-        layout = QVBoxLayout(root)
+        self.setStyleSheet("""
+            QMainWindow { background: #171a21; }
+            QTabWidget::pane { border: 1px solid #3b4252; background: #20252e; }
+            QTabBar::tab {
+                background: #2a3140; color: white; font-weight: 700;
+                padding: 14px 28px; margin-right: 2px;
+            }
+            QTabBar::tab:selected { background: #6d3cc8; }
+            QLabel, QPushButton, QLineEdit, QDoubleSpinBox, QPlainTextEdit {
+                color: white; font-weight: 700;
+            }
+            QLineEdit, QDoubleSpinBox, QPlainTextEdit {
+                background: #11151c; border: 1px solid #4b5568;
+                border-radius: 5px; padding: 8px;
+            }
+            QLineEdit:focus, QDoubleSpinBox:focus { border: 2px solid #9a6cff; }
+            QPushButton {
+                background: #6d3cc8; border: none; border-radius: 5px;
+                padding: 10px 18px;
+            }
+            QPushButton:hover { background: #8256d8; }
+            QPushButton:disabled { background: #454b57; color: #c4c7cf; }
+        """)
+
+        tabs = QTabWidget()
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(38, 32, 38, 32)
+        layout.setSpacing(18)
         layout.addWidget(QLabel("Enter the exact room tile names in the order you want to open them."))
         form = QFormLayout()
         self.rooms = []
@@ -160,7 +188,8 @@ class MainWindow(QMainWindow):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         layout.addWidget(self.log)
-        self.setCentralWidget(root)
+        tabs.addTab(page, "Room Opener")
+        self.setCentralWidget(tabs)
         self.save_button.clicked.connect(self.save_settings)
         self.start_button.clicked.connect(self.start)
         self.stop_button.clicked.connect(self.stop)

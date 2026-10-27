@@ -26,8 +26,15 @@ try {
         if ($words.Count -gt 0) {
             $top = ($words | ForEach-Object { $_.BoundingRect.Y } | Measure-Object -Minimum).Minimum
             $bottom = ($words | ForEach-Object { $_.BoundingRect.Y + $_.BoundingRect.Height } | Measure-Object -Maximum).Maximum
-            [pscustomobject]@{ text = $_.Text; top = $top; bottom = $bottom }
+            $items = @($words | ForEach-Object {
+                [pscustomobject]@{
+                    text = $_.Text; left = $_.BoundingRect.X; top = $_.BoundingRect.Y
+                    right = $_.BoundingRect.X + $_.BoundingRect.Width
+                    bottom = $_.BoundingRect.Y + $_.BoundingRect.Height
+                }
+            })
+            [pscustomobject]@{ text = $_.Text; top = $top; bottom = $bottom; words = $items }
         }
     })
-    ConvertTo-Json -InputObject $lines -Compress
+    ConvertTo-Json -InputObject $lines -Compress -Depth 5
 } finally { $stream.Dispose() }

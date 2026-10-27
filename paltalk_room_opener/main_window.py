@@ -82,6 +82,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(850, 620)
         self.worker = None
         self.camera_worker = None
+        self._closing_pending = False
         self.camera_restart_pending = False
         self.camera_auto_handled = False
         self.auto_open_pending = False
@@ -162,7 +163,7 @@ class MainWindow(QMainWindow):
         self.save_button.clicked.connect(self.save_current_settings)
         self.start_button.clicked.connect(self.start)
         self.stop_button.clicked.connect(self.stop)
-        self.mode_group.buttonClicked.connect(self.update_room_limit_appearance)
+        self.mode_group.buttonClicked.connect(self.room_mode_changed)
         self.load_saved_settings()
         self.update_room_limit_appearance()
         self.auto_open_button.toggled.connect(self.on_auto_open_toggled)
@@ -188,6 +189,13 @@ class MainWindow(QMainWindow):
             self.auto_open_button.setChecked(bool(data.get("open_on_paltalk_start", False)))
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f"Could not load settings: {exc}")
+
+    def room_mode_changed(self):
+        self.update_room_limit_appearance()
+        try:
+            settings.save_room_mode(self.selected_mode())
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            QMessageBox.warning(self, "Settings", f"Could not save room mode: {exc}")
 
     def save_current_settings(self):
         try:
@@ -345,13 +353,31 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.camera_restart_pending = False
+        self.auto_open_pending = False
+        running = False
         if self.camera_worker and self.camera_worker.isRunning():
             self.camera_worker.requestInterruption()
-            self.camera_worker.wait()
+            running = True
         if self.worker and self.worker.isRunning():
             self.worker.requestInterruption()
-            self.worker.wait()
+            running = True
+        if running:
+            event.ignore()
+            if not self._closing_pending:
+                self._closing_pending = True
+                self.camera_start.setEnabled(False)
+                self.start_button.setEnabled(False)
+                self.camera_log.appendPlainText('Stopping background work before closing...')
+                QTimer.singleShot(100, self._finish_close_when_stopped)
+            return
         event.accept()
+
+    def _finish_close_when_stopped(self):
+        if ((self.camera_worker and self.camera_worker.isRunning()) or
+                (self.worker and self.worker.isRunning())):
+            QTimer.singleShot(100, self._finish_close_when_stopped)
+        else:
+            self.close()
 
     def create_camera_tab(self, tabs):
         page = QWidget()
@@ -406,10 +432,13 @@ class MainWindow(QMainWindow):
                     item.setData(Qt.ItemDataRole.UserRole, self.camera_next_order)
                     self.camera_next_order += 1
             self.camera_auto.setChecked(bool(data.get('start_on_paltalk', False)))
+            self.camera_alphabetical.setChecked(bool(data.get('alphabetical', False)))
+            if self.camera_alphabetical.isChecked():
+                self.sort_camera_names(True)
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.camera_log.appendPlainText(f'Could not load camera settings: {exc}')
         add.clicked.connect(self.add_camera_name)
-        self.camera_alphabetical.toggled.connect(self.sort_camera_names)
+        self.camera_alphabetical.toggled.connect(self.camera_alphabetical_changed)
         self.camera_names.itemChanged.connect(self.camera_name_changed)
         self.camera_entry.returnPressed.connect(self.add_camera_name)
         remove.clicked.connect(self.remove_camera_name)
@@ -434,6 +463,10 @@ class MainWindow(QMainWindow):
     def camera_name_changed(self, _item):
         if self.camera_alphabetical.isChecked():
             self.sort_camera_names(True)
+
+    def camera_alphabetical_changed(self, enabled):
+        self.sort_camera_names(enabled)
+        self.save_camera_settings()
 
     def save_selected_tab(self, index):
         try:
@@ -485,7 +518,7 @@ class MainWindow(QMainWindow):
 
     def save_camera_settings(self):
         try:
-            settings.save_camera_settings(self.camera_username_list(), self.camera_auto.isChecked())
+            settings.save_camera_settings(self.camera_username_list(), self.camera_auto.isChecked(), self.camera_alphabetical.isChecked())
             self.camera_log.appendPlainText('Camera settings saved.')
             return True
         except OSError as exc:

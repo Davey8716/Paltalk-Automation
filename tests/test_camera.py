@@ -2,21 +2,34 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from paltalk_room_opener import settings
-from paltalk_room_opener.camera_automation import CameraScanner, _camera_state, _normal
+from paltalk_room_opener.camera_automation import (
+    CameraScanner, _badge_boxes, _camera_state, _match_rows, _normal,
+    _ocr, _row_text, _row_words, _ScanStopped, watch_cameras,
+)
 
 
 class CameraTests(unittest.TestCase):
+    def test_room_mode_save_preserves_other_saved_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(settings, 'APP_DATA_DIR', root), patch.object(settings, 'SETTINGS_PATH', root / 'rooms.json'):
+                settings.save_settings(['Room'], 3, 'regular', False)
+                settings.save_room_mode('vip')
+                data = settings.load_settings()
+                self.assertEqual(data['mode'], 'vip')
+                self.assertEqual(data['rooms']['room_1'], 'Room')
+
     def test_camera_settings_are_separate_and_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             with patch.object(settings, 'APP_DATA_DIR', root), patch.object(settings, 'CAMERA_SETTINGS_PATH', root / 'cameras.json'):
-                settings.save_camera_settings(['Dave8787', 'margot73'], True)
-                self.assertEqual(settings.load_camera_settings(), {'usernames': ['Dave8787', 'margot73'], 'start_on_paltalk': True})
+                settings.save_camera_settings(['Dave8787', 'margot73'], True, True)
+                self.assertEqual(settings.load_camera_settings(), {'usernames': ['Dave8787', 'margot73'], 'start_on_paltalk': True, 'alphabetical': True})
                 self.assertFalse((root / 'room_names.json').exists())
 
     def test_icon_states_and_ocr_whitespace(self):
@@ -40,7 +53,107 @@ class CameraTests(unittest.TestCase):
         self.assertFalse(scanner.open_if_available('tiffee'))
         scanner.scan = lambda: [('Tiffee', 'available', e, 10), ('Tiffee', 'available', e, 30)]
         self.assertFalse(scanner.open_if_available('tiffee'))
+        scanner.room_identity = (1,)
+        def changed_room():
+            scanner.room_identity = (2,)
+            return [('Tiffee', 'available', e, 30)]
+        scanner.scan = changed_room
+        self.assertFalse(scanner.open_if_available('tiffee'))
         self.assertEqual(e.pattern.calls, 1)
+
+    def test_badge_shapes_and_row_word_boundaries(self):
+        image = Image.new('RGB', (200, 24), 'white')
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((80, 5, 92, 18), fill=(0, 155, 220))
+        boxes = _badge_boxes(image, 0, 0, 180, 24)
+        self.assertEqual(boxes, [(80, 5, 93, 19)])
+        lines = [{'words': [
+            {'text': 'FATPIZZA', 'left': 5, 'right': 75, 'top': 6, 'bottom': 18},
+            {'text': 'O', 'left': 82, 'right': 91, 'top': 6, 'bottom': 18},
+            {'text': 'other', 'left': 5, 'right': 50, 'top': 35, 'bottom': 47},
+        ]}]
+        words = _row_words(lines, 12, 180)
+        self.assertEqual(_row_text(words, boxes[0][0]), 'FATPIZZA')
+        self.assertIsNone(_row_text(words, 70))
+
+    def test_exact_readings_match_saved_names(self):
+        rows = [
+            (('TungfooMaster1',), 'available', object(), 10),
+            (('thailand', 'sexydiva thailand', "se)9'diva thailand"), 'available', object(), 30),
+            (('Thai_mafia 1', 'Thai_mafial'), 'available', object(), 50),
+            (('FATPIZZA',), 'available', object(), 70),
+            (('SHARKCAT',), 'available', object(), 90),
+        ]
+        names = ['TungfooMaster1', 'sexydiva thailand', 'Thai_mafia1', 'FATPIZZA', 'SHARKCAT']
+        for name in names:
+            matches, conflict = _match_rows(rows, names, name)
+            self.assertEqual(len(matches), 1, name)
+            self.assertFalse(conflict, name)
+        self.assertEqual(_match_rows(rows, ['sexydiva'], 'sexydiva')[0], [])
+
+    def test_conflicting_and_duplicate_rows_are_not_unique(self):
+        rows = [(('Thai_mafia1', 'Thai_mafial'), 'available', object(), 10)]
+        names = ['Thai_mafia1', 'Thai_mafial']
+        self.assertTrue(_match_rows(rows, names, 'Thai_mafia1')[1])
+        rows.append((('Thai_mafia 1',), 'available', object(), 30))
+        self.assertEqual(len(_match_rows(rows, names, 'Thai_mafia1')[0]), 2)
+
+    def test_recheck_skips_conflicting_saved_names(self):
+        scanner = CameraScanner.__new__(CameraScanner)
+        scanner.scan = lambda: [(('Thai_mafia1', 'Thai_mafial'), 'available', object(), 10)]
+        self.assertFalse(scanner.open_if_available('Thai_mafia1', configured_names=['Thai_mafia1', 'Thai_mafial']))
+
+    def test_recheck_invokes_new_row_after_reordering(self):
+        class Pattern:
+            calls = 0
+            def Invoke(self): self.calls += 1
+        class Element:
+            def __init__(self): self.pattern = Pattern()
+            def GetCurrentPattern(self, _): return self.pattern
+        old, moved = Element(), Element()
+        scanner = CameraScanner.__new__(CameraScanner)
+        scanner.a = type('A', (), {'InvokePattern': type('P', (), {'Pattern': 1})})
+        scanner.scan = lambda: [(('TungfooMaster1',), 'available', moved, 50)]
+        self.assertTrue(scanner.open_if_available('TungfooMaster1'))
+        self.assertEqual(old.pattern.calls, 0)
+        self.assertEqual(moved.pattern.calls, 1)
+
+    def test_scaled_word_positions_and_space_preservation(self):
+        lines = [{'words': [
+            {'text': 'sexydiva', 'left': 10, 'right': 90, 'top': 12, 'bottom': 36},
+            {'text': 'thailand', 'left': 96, 'right': 166, 'top': 12, 'bottom': 36},
+            {'text': 'camera', 'left': 200, 'right': 230, 'top': 12, 'bottom': 36},
+        ]}]
+        self.assertEqual(_row_text(_row_words(lines, 12, 100, 2)), 'sexydiva thailand')
+
+    def test_stop_during_delay_prevents_next_camera(self):
+        class Scanner:
+            room_identity = (1,)
+            ocr_lines = []
+            ocr_comparisons = []
+            calls = []
+            def scan(self):
+                return [(('first',), 'available', object(), 10),
+                        (('second',), 'available', object(), 30)]
+            def open_if_available(self, name, stopped, names):
+                self.calls.append(name)
+                return True
+        scanner = Scanner()
+        ticks = []
+        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
+             patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=lambda _: ticks.append(1)):
+            watch_cameras(['first', 'second'], lambda _: None, lambda: len(ticks) >= 3)
+        self.assertEqual(scanner.calls, ['first'])
+        self.assertEqual(len(ticks), 3)
+
+    def test_stopping_ocr_terminates_the_process(self):
+        process = MagicMock()
+        process.poll.return_value = None
+        with patch('paltalk_room_opener.camera_automation.subprocess.Popen', return_value=process):
+            with self.assertRaises(_ScanStopped):
+                _ocr(Image.new('RGB', (10, 10), 'white'), lambda: True)
+        process.kill.assert_called_once()
+        process.communicate.assert_called_once()
 
 
 if __name__ == '__main__':

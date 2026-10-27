@@ -30,9 +30,9 @@ def load_camera_settings():
         return {}
 
 
-def save_camera_settings(names, start_on_paltalk):
+def save_camera_settings(names, start_on_paltalk, alphabetical=False):
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    CAMERA_SETTINGS_PATH.write_text(json.dumps({"usernames": names, "start_on_paltalk": start_on_paltalk}, indent=2), encoding="utf-8")
+    CAMERA_SETTINGS_PATH.write_text(json.dumps({"usernames": names, "start_on_paltalk": start_on_paltalk, "alphabetical": alphabetical}, indent=2), encoding="utf-8")
 
 
 def load_settings():
@@ -52,4 +52,12 @@ def save_settings(rooms, delay, mode, open_on_paltalk_start):
         "mode": mode,
         "open_on_paltalk_start": open_on_paltalk_start,
     }
+    SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def save_room_mode(mode):
+    """Persist the mode without saving other unsaved room settings."""
+    data = load_settings()
+    data['mode'] = mode
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")

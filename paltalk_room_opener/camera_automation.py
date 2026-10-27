@@ -9,7 +9,7 @@ import time
 from importlib import import_module
 from pathlib import Path
 
-from PIL import ImageGrab
+from PIL import Image, ImageGrab, ImageOps, ImageDraw, ImageEnhance
 import psutil
 
 
@@ -27,20 +27,41 @@ def _uia():
     return import_module('System.Windows.Automation')
 
 
-def _ocr(image):
+class _ScanStopped(Exception):
+    pass
+
+
+def _ocr(image, stopped=lambda: False):
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as file:
         path = file.name
     try:
         image.save(path)
         script = Path(__file__).with_name('windows_ocr.ps1')
-        result = subprocess.run(
+        process = subprocess.Popen(
             ['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-             '-File', str(script), path], capture_output=True, text=True, encoding='utf-8',
-            errors='replace', timeout=15, creationflags=subprocess.CREATE_NO_WINDOW,
+             '-File', str(script), path], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        if result.returncode:
-            raise RuntimeError('Windows OCR failed: ' + (result.stderr.strip() or 'unknown error'))
-        return json.loads(result.stdout, strict=False)
+        deadline = time.monotonic() + 15
+        try:
+            while True:
+                if stopped():
+                    raise _ScanStopped()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError('Windows OCR timed out.')
+                try:
+                    stdout, stderr = process.communicate(timeout=min(.2, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+            if process.returncode:
+                raise RuntimeError('Windows OCR failed: ' + (stderr.strip() or 'unknown error'))
+            return json.loads(stdout, strict=False)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
     finally:
         os.unlink(path)
 
@@ -66,6 +87,82 @@ def _normal(value):
     return ''.join(value.casefold().split())
 
 
+def _badge_boxes(image, left, top, right, bottom):
+    """Find compact, filled colored shapes; letter strokes are normally much thinner."""
+    crop = image.crop((left, top, right, bottom)).convert('RGB')
+    width, height = crop.size
+    pixels = crop.load()
+    colored = set()
+    for y in range(height):
+        for x in range(width):
+            r, g, b = pixels[x, y]
+            if max(r, g, b) >= 120 and max(r, g, b) - min(r, g, b) >= 75:
+                colored.add((x, y))
+    boxes = []
+    while colored:
+        point = colored.pop()
+        stack = [point]
+        component = [point]
+        while stack:
+            x, y = stack.pop()
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    neighbor = (x + dx, y + dy)
+                    if neighbor in colored:
+                        colored.remove(neighbor)
+                        stack.append(neighbor)
+                        component.append(neighbor)
+        xs, ys = zip(*component)
+        x0, x1, y0, y1 = min(xs), max(xs) + 1, min(ys), max(ys) + 1
+        w, h = x1 - x0, y1 - y0
+        if w >= 8 and h >= 8 and len(component) >= 45 and len(component) / (w * h) >= .4:
+            boxes.append((left + x0, top + y0, left + x1, top + y1))
+    return sorted(boxes)
+
+
+def _row_words(lines, center, button_x, scale=1):
+    words = []
+    for line in lines:
+        for word in line.get('words', []):
+            item = {key: value / scale for key, value in word.items() if key != 'text'}
+            item['text'] = word['text']
+            if abs((item['top'] + item['bottom']) / 2 - center) <= 9 and item['right'] <= button_x:
+                words.append(item)
+    return sorted(words, key=lambda word: word['left'])
+
+
+def _row_text(words, boundary=None):
+    if not words:
+        return None
+    selected = []
+    for word in words:
+        if boundary is not None and word['right'] > boundary:
+            if word['left'] < boundary:
+                return None  # OCR combined text and badge; the boundary is uncertain.
+            break
+        selected.append(word['text'])
+    return ' '.join(selected).strip() or None
+
+
+def _readings(row):
+    return (row[0],) if isinstance(row[0], str) else row[0]
+
+
+def _match_rows(rows, names, target):
+    """Return matching rows and whether any row also names another saved user."""
+    configured = {_normal(name) for name in names}
+    wanted = _normal(target)
+    matches = []
+    conflict = False
+    for row in rows:
+        found = {_normal(value) for value in _readings(row) if value} & configured
+        if wanted in found:
+            matches.append(row)
+            if len(found) > 1:
+                conflict = True
+    return matches, conflict
+
+
 class CameraScanner:
     def __init__(self):
         # Match UI Automation physical pixels to screenshots on scaled displays.
@@ -76,6 +173,9 @@ class CameraScanner:
         self.a = _uia()
 
     def scan(self):
+        stopped = getattr(self, 'stopped', lambda: False)
+        if stopped():
+            raise _ScanStopped()
         a = self.a
         pids = {p.info['pid'] for p in psutil.process_iter(['pid', 'name'])
                 if (p.info.get('name') or '').lower() == 'paltalk.exe'}
@@ -103,7 +203,7 @@ class CameraScanner:
         if width < 30 or height < 30 or width > 3000 or height > 4000:
             raise RuntimeError('Room member list has invalid screen bounds.')
         image = ImageGrab.grab(bbox=(left, top, left + width, top + height), all_screens=True)
-        lines = _ocr(image)
+        lines = _ocr(image, stopped)
         headers = [line for line in lines if _normal(line['text']).startswith('oncam')]
         if len(headers) != 1:
             raise RuntimeError('On Cam heading is not visible or could not be read.')
@@ -111,6 +211,8 @@ class CameraScanner:
         endings = [line['top'] for line in lines if line['top'] > start and
                    _normal(line['text']).startswith(('chatting', 'members'))]
         end = min(endings) if endings else height
+        self.ocr_lines = [line['text'].strip() for line in lines
+                          if start < (line['top'] + line['bottom']) / 2 < end]
         buttons = []
         for e in member_list.FindAll(a.TreeScope.Descendants, a.Condition.TrueCondition):
             c = e.Current
@@ -121,21 +223,65 @@ class CameraScanner:
             bw, bh = int(b.Width), int(b.Height)
             if bw <= 0 or bh <= 0 or x < 0 or y < start or x + bw > width or y + bh > end:
                 continue
-            buttons.append((y + bh / 2, _camera_state(image, x, y, bw, bh), e))
-        rows = []
-        for line in lines:
-            center = (line['top'] + line['bottom']) / 2
-            if not start < center < end:
+            buttons.append((y + bh / 2, _camera_state(image, x, y, bw, bh), e, x))
+        # Find badge shapes after the first recognized word. Never cut through a
+        # word: a merged word makes that row ambiguous instead.
+        boundaries = {}
+        source = image.convert('RGB')
+        enhanced = source.copy()
+        draw = ImageDraw.Draw(enhanced)
+        for index, (center, _, _, button_x) in enumerate(buttons):
+            words = _row_words(lines, center, button_x)
+            if not words:
                 continue
-            matching = [b for b in buttons if abs(b[0] - center) <= 9]
-            if len(matching) == 1:
-                rows.append((line['text'].strip(), matching[0][1], matching[0][2], center))
+            top = max(0, int(center - 10))
+            bottom = min(height, int(center + 10))
+            boxes = _badge_boxes(image, 0, top, button_x, bottom)
+            badges = [box for box in boxes if box[0] >= words[0]['right'] + 1]
+            if badges:
+                boundary = badges[0][0]
+                boundaries[index] = boundary
+                background = source.getpixel((0, min(height - 1, int(center))))
+                draw.rectangle((boundary, top, max(boundary, button_x - 1), bottom - 1), fill=background)
+        # Use a single enlarged capture for all rows to avoid launching OCR once per name.
+        scale = 2 if max(width, height) <= 2048 else 1
+        color_image = enhanced
+        enhanced = ImageOps.autocontrast(ImageOps.grayscale(color_image))
+        enhanced = enhanced.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
+        enhanced_lines = _ocr(enhanced, stopped)
+        # A differently processed color capture resolves cases where one pass
+        # drops a word or confuses similar characters such as 1 and l.
+        third_image = ImageEnhance.Contrast(color_image).enhance(1.5)
+        third_image = third_image.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
+        third_lines = _ocr(third_image, stopped)
+        rows = []
+        self.ocr_comparisons = []
+        for index, (center, state, element, button_x) in enumerate(buttons):
+            if sum(abs(other[0] - center) <= 18 for other in buttons) != 1:
+                self.ocr_comparisons.append(f'row at {center:.0f}: camera buttons overlap')
+                continue
+            boundary = boundaries.get(index)
+            first = _row_text(_row_words(lines, center, button_x), boundary)
+            second = _row_text(_row_words(enhanced_lines, center, button_x, scale), boundary)
+            third = _row_text(_row_words(third_lines, center, button_x, scale), boundary)
+            readings = tuple(dict.fromkeys(value for value in (first, second, third) if value))
+            if len(readings) != 1 or first is None:
+                original_words = _row_words(lines, center, button_x)
+                positions = [(word['text'], round(word['left'], 1), round(word['right'], 1))
+                             for word in original_words]
+                self.ocr_comparisons.append(
+                    f'row at {center:.0f}: original={first!r}, enhanced={second!r}, color={third!r}, '
+                    f'badge boundary={boundary!r}, original word positions={positions!r}')
+            if readings:
+                rows.append((readings, state, element, center))
         return rows
 
-    def open_if_available(self, name, stopped=lambda: False):
+    def open_if_available(self, name, stopped=lambda: False, configured_names=None):
         # A second complete capture and lookup ensures list reorderings do not reuse stale elements.
-        matches = [row for row in self.scan() if _normal(row[0]) == _normal(name)]
-        if stopped() or len(matches) != 1 or matches[0][1] != 'available':
+        room = getattr(self, 'room_identity', None)
+        matches, conflict = _match_rows(self.scan(), configured_names or [name], name)
+        if (stopped() or room != getattr(self, 'room_identity', None) or
+                conflict or len(matches) != 1 or matches[0][1] != 'available'):
             return False
         matches[0][2].GetCurrentPattern(self.a.InvokePattern.Pattern).Invoke()
         return True
@@ -143,11 +289,13 @@ class CameraScanner:
 
 def watch_cameras(names, log, stopped):
     scanner = CameraScanner()
+    scanner.stopped = stopped
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
     last_error = None
     attempts = {}
     previous_room = None
     reported = {}
+    diagnostic_reported = False
     while not stopped():
         try:
             rows = scanner.scan()
@@ -155,6 +303,7 @@ def watch_cameras(names, log, stopped):
                 previous_room = scanner.room_identity
                 attempts.clear()
                 reported.clear()
+                diagnostic_reported = False
                 log('Monitoring the displayed room.')
             if last_error:
                 log('Camera list is available again.')
@@ -162,11 +311,24 @@ def watch_cameras(names, log, stopped):
             for name in names:
                 if stopped():
                     break
-                matches = [row for row in rows if _normal(row[0]) == _normal(name)]
+                matches, conflict = _match_rows(rows, names, name)
                 if sum(_normal(other) == _normal(name) for other in names) != 1:
                     status = 'ambiguous configured username'
-                elif len(matches) != 1:
-                    status = 'not visible or ambiguous'
+                elif len(matches) != 1 or conflict:
+                    if conflict:
+                        status = 'row matches multiple saved usernames'
+                    elif len(matches) > 1:
+                        status = 'username matches multiple rows'
+                    else:
+                        status = 'not visible or ambiguous'
+                    if not diagnostic_reported:
+                        read = ', '.join(repr(line) for line in scanner.ocr_lines) or '(none)'
+                        detected = ', '.join(repr(_readings(row)) for row in rows) or '(none)'
+                        log(f'On Cam text read by OCR: {read}.')
+                        log(f'OCR lines matched to camera buttons: {detected}.')
+                        if scanner.ocr_comparisons:
+                            log('Unmatched OCR rows: ' + '; '.join(scanner.ocr_comparisons))
+                        diagnostic_reported = True
                 elif matches[0][1] == 'unknown':
                     status = 'camera icon not recognized'
                 else:
@@ -181,10 +343,17 @@ def watch_cameras(names, log, stopped):
                 if time.monotonic() - attempts.get(key, 0) < 10:
                     continue
                 attempts[key] = time.monotonic()
-                if scanner.open_if_available(name, stopped):
+                if scanner.open_if_available(name, stopped, names):
                     log(f'Invoked camera button for {name}; check the video view to confirm it opened.')
+                    # Let Paltalk finish opening the view before invoking another.
+                    for _ in range(50):
+                        if stopped():
+                            break
+                        time.sleep(.1)
                 else:
                     log(f'Skipped {name}: the row changed or could not be verified.')
+        except _ScanStopped:
+            break
         except Exception as exc:
             message = str(exc)
             if message != last_error:

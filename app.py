@@ -128,7 +128,7 @@ class RoomWorker(QThread):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Paltalk Room Opener")
+        self.setWindowTitle("Paltalk Automation")
         self.resize(650, 440)
         self.worker = None
         root = QWidget()

@@ -38,6 +38,21 @@ class CloseRoomWorker(QThread):
             self.message.emit(f"Could not close room: {self.name}. {exc}")
 
 
+class CloseAllRoomsWorker(QThread):
+    message = Signal(str)
+
+    def __init__(self, names):
+        super().__init__()
+        self.names = names
+
+    def run(self):
+        for name in self.names:
+            try:
+                close_room(name, self.message.emit)
+            except Exception as exc:
+                self.message.emit(f"Could not close room: {name}. {exc}")
+
+
 class RoomStateWorker(QThread):
     result = Signal(object)
 

@@ -3,9 +3,19 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from paltalk_room_opener.automation import close_room, room_states
+from paltalk_room_opener.worker import CloseAllRoomsWorker
 
 
 class CloseRoomTests(unittest.TestCase):
+    def test_close_all_continues_after_a_room_fails(self):
+        worker = CloseAllRoomsWorker(['Alpha', 'Beta'])
+        messages = []
+        worker.message.connect(messages.append)
+        with patch('paltalk_room_opener.worker.close_room', side_effect=[RuntimeError('failure'), None]) as close:
+            worker.run()
+        self.assertEqual([call.args[0] for call in close.call_args_list], ['Alpha', 'Beta'])
+        self.assertIn('Alpha', messages[0])
+
     def test_state_uses_identified_close_buttons_and_rejects_ambiguity(self):
         button = SimpleNamespace(Current=SimpleNamespace(AutomationId='Room close: The Garage'))
         with patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 from . import settings
 from .automation import is_paltalk_running
 from .styles import APP_STYLE
-from .worker import CameraWorker, CloseRoomWorker, RoomStateWorker, RoomWorker
+from .worker import CameraWorker, CloseAllRoomsWorker, CloseRoomWorker, RoomStateWorker, RoomWorker
 
 
 class RoomNameField(QLineEdit):
@@ -154,11 +154,11 @@ class MainWindow(QMainWindow):
 
         self.save_button = QPushButton("Save settings")
         self.start_button = QPushButton("Open rooms")
-        self.stop_button = QPushButton("Stop")
-        self.stop_button.setEnabled(False)
+        self.close_all_button = QPushButton("Close all")
+        self.close_all_button.setEnabled(False)
         for button in (
             self.regular_button, self.vip_button, self.auto_open_button, self.save_button,
-            self.start_button, self.stop_button,
+            self.start_button, self.close_all_button,
         ):
             buttons.addWidget(button)
         layout.addLayout(buttons)
@@ -177,8 +177,8 @@ class MainWindow(QMainWindow):
         tabs.currentChanged.connect(self.save_selected_tab)
 
         self.save_button.clicked.connect(self.save_current_settings)
-        self.start_button.clicked.connect(self.start)
-        self.stop_button.clicked.connect(self.stop)
+        self.start_button.clicked.connect(self.toggle_opening)
+        self.close_all_button.clicked.connect(self.close_all_rooms)
         self.mode_group.buttonClicked.connect(self.room_mode_changed)
         self.load_saved_settings()
         self.update_room_limit_appearance()
@@ -260,6 +260,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Settings", f"Could not save settings: {exc}")
             return False
 
+    def toggle_opening(self):
+        if self.worker:
+            self.stop()
+        else:
+            self.start()
+
     def start(self, automatic=False):
         mode = self.selected_mode()
         names = self.selected_room_names()
@@ -281,7 +287,7 @@ class MainWindow(QMainWindow):
         self.start_room_worker([name], False, f"room: {name}")
 
     def start_room_worker(self, names, automatic, description):
-        if self.worker or not self.save_current_settings():
+        if self.worker or self.close_room_worker or not self.save_current_settings():
             return
         if not automatic:
             self.auto_open_pending = False
@@ -292,10 +298,11 @@ class MainWindow(QMainWindow):
         if automatic:
             self.worker.completed.connect(self.automatic_open_finished)
         self.worker.finished.connect(self.finished)
-        self.set_button_enabled(self.start_button, False)
+        self.start_button.setText("Stop")
+        self.start_button.setEnabled(True)
         for button in self.open_room_buttons:
             self.set_button_enabled(button, False)
-        self.stop_button.setEnabled(True)
+        self.set_button_enabled(self.close_all_button, False)
         prefix = "Automatically starting" if automatic else "Starting"
         self.log.appendPlainText(f"{prefix} {description}...")
         self.worker.start()
@@ -411,6 +418,11 @@ class MainWindow(QMainWindow):
             button.setAccessibleName(f"{action} Room {index + 1}")
             button.setToolTip(f"{action} the Paltalk room in Room {index + 1}" if known else "Room status unavailable")
             self.set_button_enabled(button, bool(name and known and not self.worker and not self.close_room_worker))
+        if hasattr(self, 'close_all_button'):
+            self.set_button_enabled(self.close_all_button, bool(
+                self.room_states and any(self.room_states.get(field.text().strip()) for field in self.rooms)
+                and not self.worker and not self.close_room_worker
+            ))
 
     def toggle_configured_room(self, index):
         name = self.rooms[index].text().strip()
@@ -429,11 +441,33 @@ class MainWindow(QMainWindow):
         self.close_room_worker = CloseRoomWorker(name)
         self.close_room_worker.message.connect(self.log.appendPlainText)
         self.close_room_worker.finished.connect(self.close_room_finished)
+        self.set_button_enabled(self.start_button, False)
         self.update_room_buttons()
+        self.close_room_worker.start()
+
+    def close_all_rooms(self):
+        if self.worker or self.close_room_worker or not self.room_states:
+            return
+        names = list(dict.fromkeys(
+            field.text().strip() for field in self.rooms
+            if self.room_states.get(field.text().strip())
+        ))
+        if not names:
+            return
+        self.auto_open_pending = False
+        self.auto_open_attempts_remaining = 0
+        self.auto_open_handled_for_session = True
+        self.close_room_worker = CloseAllRoomsWorker(names)
+        self.close_room_worker.message.connect(self.log.appendPlainText)
+        self.close_room_worker.finished.connect(self.close_room_finished)
+        self.set_button_enabled(self.start_button, False)
+        self.update_room_buttons()
+        self.log.appendPlainText(f"Closing {len(names)} open room(s)...")
         self.close_room_worker.start()
 
     def close_room_finished(self):
         self.close_room_worker = None
+        self.start_button.setEnabled(True)
         self.room_states = None
         self.update_room_buttons()
         self.refresh_room_states()
@@ -469,12 +503,12 @@ class MainWindow(QMainWindow):
         self.auto_open_handled_for_session = True
         if self.worker:
             self.worker.requestInterruption()
-            self.stop_button.setEnabled(False)
+            self.start_button.setEnabled(False)
             self.log.appendPlainText("Stopping after the current operation...")
 
     def finished(self):
+        self.start_button.setText("Open rooms")
         self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
         self.worker = None
         self.update_room_buttons()
         self.refresh_room_states()

@@ -25,11 +25,13 @@ Closing the window keeps the app running in the Windows notification area, inclu
 1. Start Paltalk and display the My Rooms / Rooms view containing the room tiles. Keep the relevant tiles visible and Paltalk available while the app runs.
 2. Enter the exact names exposed by the room tile buttons, in the desired order. For example: `XXX _ L_O_V_E _ _C_O_N_N_E_C_T_I_O_N _ XXX`. Leave unused entries blank.
 3. Choose **Regular (3 rooms)** to open populated entries from Room 1–3, or **VIP (5 rooms)** to open populated entries from Room 1–5. Enable **Open when Paltalk starts** to run the selected room queue shortly after Paltalk starts; otherwise use **Open rooms** manually. Settings, including the selected mode and automatic-opening choice, are saved automatically and can also be saved using **Save settings**.
-4. The app first queues every visible matching tile, then invokes the queued rooms in order. This lets it continue after Paltalk changes away from the Rooms view when the first room opens. Check the activity log for each invocation. **Stop** stops subsequent rooms, but cannot interrupt an invocation already in progress.
+4. The app first queues every visible matching tile, then invokes the queued rooms in order. This lets it continue after Paltalk changes away from the Rooms view when the first room opens. Check the activity log for each invocation. The **Open rooms** button changes to **Stop** while opening; click it to stop subsequent rooms. It cannot interrupt an invocation already in progress.
 
 Reorder rooms by dragging the ⋮⋮ handle beside a name onto another room field, or by dragging selected room text onto another field. The room moves to that position and the new order is saved. Regular mode opens the first three positions; VIP mode includes all five.
 
 Use the **Open** or **Close** button beside a room name to manage that room on its own. The button reflects the detected room state and the saved room name remains in the list. Opening still requires the tile to be visible in Paltalk's My Rooms / Rooms view. The activity log reports whether a control was invoked; an invocation does not independently verify the result.
+
+**Close all** closes all detected open rooms named in the five configured entries, regardless of the selected mode. Rooms not listed in the app are not included.
 
 The delay between rooms is at least five seconds to give rooms time to load. Previously saved delays below five seconds are raised to five seconds.
 

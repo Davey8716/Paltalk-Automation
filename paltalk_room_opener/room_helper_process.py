@@ -28,7 +28,7 @@ def main():
             restore_paltalk()
         stage = 'room-state scan'
         send('stage', stage)
-        states = room_states(names)
+        states = room_states(names, include_open_names=True) if action == 'states' else room_states(names)
         if action == 'states':
             send('result', states)
             return

@@ -339,7 +339,24 @@ def _close_buttons(a):
     return buttons
 
 
-def room_states(names):
+def _discovered_room_names(buttons):
+    """Extract only verified Paltalk room-close identifiers."""
+    names = []
+    for button in buttons:
+        current = button.Current
+        identifier = current.AutomationId or ''
+        if current.Name != 'Room close':
+            continue
+        prefix, separator, suffix = identifier.rpartition('.RoomItem_')
+        if not separator or not suffix.endswith('_CloseButton'):
+            continue
+        name = suffix[:-len('_CloseButton')]
+        if name and prefix.endswith('.RoomItem_' + name) and name not in names:
+            names.append(name)
+    return names
+
+
+def room_states(names, include_open_names=False):
     """Read the same close controls used to close rooms."""
     user32 = ctypes.WinDLL('user32', use_last_error=True)
     user32.IsWindowVisible.argtypes = [wintypes.HWND]
@@ -365,6 +382,8 @@ def room_states(names):
             matches = [button for button in buttons if name in (button.Current.AutomationId or "")]
             if len(matches) <= 1:
                 states[name] = bool(matches)
+    if include_open_names:
+        return {'states': states, 'open_names': _discovered_room_names(buttons)}
     return states
 
 

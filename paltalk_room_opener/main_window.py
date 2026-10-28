@@ -128,6 +128,7 @@ class MainWindow(QMainWindow):
         self.recent_rooms_worker = None
         self.recent_rooms_manual_pending = False
         self.room_states = None
+        self.other_open_names = []
         self.camera_worker = None
         self.mic_timer_worker = None
         self.chat_reader_worker = None
@@ -211,8 +212,23 @@ class MainWindow(QMainWindow):
         form.addWidget(self.start_button, 5, 3)
         self.close_all_button = QPushButton("Close all")
         self.close_all_button.setEnabled(False)
-        form.addWidget(self.close_all_button, 5, 4, Qt.AlignmentFlag.AlignLeft)
-        layout.addLayout(form)
+        room_columns = QHBoxLayout()
+        room_columns.addLayout(form, 3)
+        other_panel = QVBoxLayout()
+        other_panel.addWidget(QLabel('Other open rooms'))
+        self.other_rooms_scroll = QScrollArea()
+        self.other_rooms_scroll.setWidgetResizable(True)
+        self.other_rooms_scroll.setMinimumWidth(250)
+        self.other_rooms_scroll.setMaximumHeight(260)
+        other_container = QWidget()
+        self.other_rooms_layout = QVBoxLayout(other_container)
+        self.other_rooms_layout.setContentsMargins(0, 0, 0, 0)
+        self.other_rooms_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.other_rooms_scroll.setWidget(other_container)
+        other_panel.addWidget(self.other_rooms_scroll)
+        other_panel.addWidget(self.close_all_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        room_columns.addLayout(other_panel, 2)
+        layout.addLayout(room_columns)
 
         layout.addWidget(QLabel("Open Paltalk and display the My Rooms / Rooms view before starting."))
         buttons = QHBoxLayout()
@@ -648,7 +664,11 @@ class MainWindow(QMainWindow):
         if self.worker and getattr(self.worker, 'check_existing', False):
             return
         if not self.close_room_worker and states is not None:
-            self.room_states = states
+            if isinstance(states, dict) and 'states' in states and 'open_names' in states:
+                self.room_states = states['states']
+                self.other_open_names = states['open_names']
+            else:
+                self.room_states = states
         self.update_room_buttons()
 
     def room_state_finished(self):
@@ -681,12 +701,47 @@ class MainWindow(QMainWindow):
             button.setAccessibleName(f"{action} Room {index + 1}")
             button.setToolTip(f"{action} the Paltalk room in Room {index + 1}" if known else "Restore Paltalk and check the room before opening")
             self.set_button_enabled(button, bool(name and not self.worker and not self.close_room_worker))
+        if hasattr(self, 'other_rooms_layout'):
+            self.update_other_rooms()
         if hasattr(self, 'close_all_button'):
             self.set_button_enabled(self.close_all_button, bool(
                 self.room_states is not None
-                and any(self.room_states.get(field.text().strip(), False) for field in self.rooms if field.text().strip())
+                and (any(self.room_states.get(field.text().strip(), False) for field in self.rooms if field.text().strip())
+                     or bool(getattr(self, 'other_open_names', [])))
                 and not self.worker and not self.close_room_worker
             ))
+
+    def update_other_rooms(self):
+        configured = {field.text().strip() for field in self.rooms if field.text().strip()}
+        names = list(dict.fromkeys(name for name in self.other_open_names if name not in configured))
+        while self.other_rooms_layout.count():
+            item = self.other_rooms_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        for name in names:
+            row = QWidget()
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(0, 0, 0, 0)
+            field = QLineEdit(name)
+            field.setReadOnly(True)
+            field.setProperty('roomOpen', True)
+            button = QPushButton('Close')
+            button.setAccessibleName(f'Close {name}')
+            button.setEnabled(not self.worker and not self.close_room_worker)
+            button.clicked.connect(lambda checked=False, room=name: self.close_other_room(room))
+            row_layout.addWidget(field, 1)
+            row_layout.addWidget(button)
+            self.other_rooms_layout.addWidget(row)
+
+    def close_other_room(self, name):
+        if self.worker or self.close_room_worker:
+            return
+        self.close_room_worker = CloseRoomWorker(name)
+        self.close_room_worker.message.connect(self.log.appendPlainText)
+        self.close_room_worker.finished.connect(self.close_room_finished)
+        self.set_button_enabled(self.start_button, False)
+        self.update_room_buttons()
+        self.close_room_worker.start()
 
     def toggle_configured_room(self, index):
         self.open_configured_room(index)
@@ -712,6 +767,7 @@ class MainWindow(QMainWindow):
             field.text().strip() for field in self.rooms
             if field.text().strip()
         ))
+        names = list(dict.fromkeys(names + getattr(self, 'other_open_names', [])))
         if not names:
             return
         self.auto_open_pending = False
@@ -722,13 +778,12 @@ class MainWindow(QMainWindow):
         self.close_room_worker.finished.connect(self.close_room_finished)
         self.set_button_enabled(self.start_button, False)
         self.update_room_buttons()
-        self.log.appendPlainText("Restoring Paltalk and checking configured rooms...")
+        self.log.appendPlainText("Restoring Paltalk and checking open rooms...")
         self.close_room_worker.start()
 
     def close_room_finished(self):
         self.close_room_worker = None
         self.start_button.setEnabled(True)
-        self.room_states = None
         self.update_room_buttons()
         self.refresh_room_states()
 

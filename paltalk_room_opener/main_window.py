@@ -440,7 +440,7 @@ class MainWindow(QMainWindow):
         self.set_button_enabled(self.close_all_button, False)
         prefix = "Automatically starting" if automatic else "Starting"
         self.log.appendPlainText(f"{prefix} {description}...")
-        if check_existing and self.room_state_worker:
+        if (check_existing or automatic) and self.room_state_worker:
             self._pending_single_start = True
             self.room_state_worker.requestInterruption()
             self.log.appendPlainText('Waiting for the room-status scan to stop...')
@@ -538,7 +538,7 @@ class MainWindow(QMainWindow):
 
     def refresh_room_states(self):
         if (self.room_state_worker or self._quitting or self.close_room_worker or
-                (self.worker and getattr(self.worker, 'check_existing', False))):
+                (self.worker and (getattr(self.worker, 'check_existing', False) or getattr(self.worker, 'automatic', False)))):
             return
         self.room_state_worker = RoomStateWorker([field.text().strip() for field in self.rooms])
         self.room_state_worker.result.connect(self.room_states_received)

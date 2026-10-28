@@ -8,22 +8,22 @@ import threading
 import time
 from pathlib import Path
 
+import psutil
 from PySide6.QtCore import QThread, Signal
 
 from .automation import close_room, open_rooms, room_states, recently_visited_rooms, restore_paltalk, is_paltalk_running
-from .camera_automation import watch_cameras
 from .chat_reader import ChatMessage, ChatSnapshot
 from .chat_matches import ChatMatchTracker
 from .settings import load_admin_phrases
 
 
-def run_room_helper(action, names, interrupted, message=None, timeout=20):
+def run_room_helper(action, names, interrupted, message=None, timeout=20, delay=5):
     """Run a bounded room operation without loading UI Automation in this process."""
     executable = sys.executable
     if Path(executable).name.lower() == 'pythonw.exe':
         executable = str(Path(executable).with_name('python.exe'))
     process = subprocess.Popen(
-        [executable, '-m', 'paltalk_room_opener.room_helper_process', action, json.dumps(names, ensure_ascii=True)],
+        [executable, '-m', 'paltalk_room_opener.room_helper_process', action, json.dumps(names, ensure_ascii=True), str(delay)],
         cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
@@ -184,6 +184,15 @@ class RoomWorker(QThread):
         self.check_existing = check_existing
 
     def run(self):
+        if self.automatic:
+            try:
+                result = run_room_helper('automatic', self.names, self.isInterruptionRequested,
+                                         self.message.emit, timeout=max(20, self.delay + 20), delay=self.delay)
+                self.completed.emit(result)
+            except Exception as exc:
+                self.message.emit(f'Automatic room opening failed: {exc}')
+                self.completed.emit(self.STATE_UNAVAILABLE)
+            return
         if self.check_existing and not self.automatic:
             try:
                 result = run_room_helper('single', self.names, self.isInterruptionRequested, self.message.emit)
@@ -307,8 +316,89 @@ class CameraWorker(QThread):
         self.names = names
 
     def run(self):
+        while not self.isInterruptionRequested():
+            try:
+                self.run_helper()
+            except Exception as exc:
+                if not self.isInterruptionRequested():
+                    self.message.emit(f'Camera watcher: {exc} Restarting monitoring shortly.')
+            for _ in range(20):
+                if self.isInterruptionRequested():
+                    return
+                self.msleep(100)
+
+    def run_helper(self, timeout=60):
+        executable = sys.executable
+        if Path(executable).name.lower() == 'pythonw.exe':
+            executable = str(Path(executable).with_name('python.exe'))
+        process = subprocess.Popen(
+            [executable, '-m', 'paltalk_room_opener.camera_helper_process',
+             json.dumps(self.names, ensure_ascii=True)],
+            cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+        )
+        events = queue.Queue()
+
+        def read_output():
+            try:
+                for line in process.stdout:
+                    events.put(line)
+            finally:
+                events.put(None)
+
+        threading.Thread(target=read_output, daemon=True).start()
+        stage = 'starting camera helper'
+        deadline = time.monotonic() + timeout
         try:
-            watch_cameras(self.names, self.message.emit, self.isInterruptionRequested,
-                          self.invoked.emit, self.failed.emit)
-        except Exception as exc:
-            self.message.emit(f'Camera watcher error: {exc}')
+            while not self.isInterruptionRequested():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    detail = (' The camera outcome is unknown; its visible state will be checked before retrying.'
+                              if stage == 'opening a camera' else '')
+                    raise RuntimeError(f'Timed out while {stage}.{detail}')
+                try:
+                    line = events.get(timeout=min(0.2, remaining))
+                except queue.Empty:
+                    continue
+                if line is None:
+                    detail = (' The camera outcome is unknown; its visible state will be checked before retrying.'
+                              if stage == 'opening a camera' else '')
+                    raise RuntimeError(f'Camera helper exited while {stage}.{detail}')
+                try:
+                    event = json.loads(line.decode('utf-8'))
+                    kind, value = event['kind'], event['value']
+                    if not isinstance(value, str):
+                        raise ValueError('invalid event value')
+                except (ValueError, KeyError, TypeError, UnicodeError) as exc:
+                    raise RuntimeError('Invalid response from camera helper.') from exc
+                if kind == 'progress':
+                    stage = value
+                    deadline = time.monotonic() + timeout
+                elif kind == 'message':
+                    self.message.emit(value)
+                elif kind == 'invoked':
+                    self.invoked.emit(value)
+                elif kind == 'failed':
+                    self.failed.emit(value)
+                elif kind == 'error':
+                    raise RuntimeError(value)
+        finally:
+            # OCR is a child of the helper; terminate it before its parent so it
+            # cannot survive a stalled scan or a forced stop.
+            try:
+                parent = psutil.Process(process.pid)
+                parent.suspend()
+                children = parent.children(recursive=True)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                children = []
+            for child in reversed(children):
+                try:
+                    child.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            psutil.wait_procs(children, timeout=2)
+            process.stdout.close()

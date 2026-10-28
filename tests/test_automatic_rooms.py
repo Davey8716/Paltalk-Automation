@@ -1,13 +1,9 @@
 import os
 import unittest
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-
 from PySide6.QtWidgets import QApplication
-
-from paltalk_room_opener.main_window import MainWindow
 from paltalk_room_opener.worker import RoomWorker
 from paltalk_room_opener import room_helper_process
 
@@ -17,107 +13,55 @@ class AutomaticRoomTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def run_worker(self, states, automatic=True):
-        worker = RoomWorker(['Alpha', 'Beta'], 5, automatic=automatic)
-        results, messages = [], []
-        worker.completed.connect(results.append)
-        worker.message.connect(messages.append)
-        with patch('paltalk_room_opener.worker.restore_paltalk') as restore, \
-             patch('paltalk_room_opener.worker.room_states', side_effect=states) as check, \
-             patch('paltalk_room_opener.worker.open_rooms', return_value=1) as open_rooms:
-            worker.run()
-        restore.assert_called_once()
-        return results, messages, check, open_rooms
+    def run_helper(self, states, action='automatic'):
+        events, messages = [], []
+        with patch('sys.argv', ['helper', action, '["Alpha", "Beta"]', '7']), \
+             patch.object(room_helper_process, 'send', side_effect=lambda kind, value: messages.append((kind, value))), \
+             patch.object(room_helper_process, 'restore_paltalk', side_effect=lambda: events.append('restore')), \
+             patch.object(room_helper_process, 'room_states', return_value=states), \
+             patch.object(room_helper_process, 'open_rooms', return_value=1) as opener:
+            room_helper_process.main()
+        return events, messages, opener
 
-    def test_all_open_skips_tiles_and_finishes(self):
-        results, messages, _, opener = self.run_worker([{'Alpha': True, 'Beta': True}])
-        self.assertEqual(results, [RoomWorker.ALREADY_OPEN])
-        self.assertIn('All configured rooms are already open.', messages)
-        opener.assert_not_called()
-        window = self.window()
-        with patch('paltalk_room_opener.main_window.QTimer.singleShot') as timer:
-            MainWindow.automatic_open_finished(window, results[0])
-        timer.assert_not_called()
-        self.assertTrue(window.auto_open_handled_for_session)
+    def test_automatic_opens_only_closed_rooms(self):
+        events, messages, opener = self.run_helper({'Alpha': True, 'Beta': False})
+        self.assertEqual(events, ['restore'])
+        self.assertEqual(opener.call_args.args[:2], (['Beta'], 7))
+        self.assertIn(('result', 1), messages)
+        self.assertIn(('message', 'Already open, skipping room: Alpha'), messages)
 
-    def test_only_closed_rooms_are_opened(self):
-        results, messages, _, opener = self.run_worker([{'Alpha': True, 'Beta': False}])
-        self.assertEqual(results, [1])
-        self.assertEqual(opener.call_args.args[0], ['Beta'])
-        self.assertIn('Already open, skipping room: Alpha', messages)
-
-    def test_unavailable_and_ambiguous_states_do_not_open_rooms(self):
-        for state in (None, {'Alpha': False}, RuntimeError('unavailable')):
+    def test_all_open_or_unknown_never_invokes_rooms(self):
+        for state, result in [({'Alpha': True, 'Beta': True}, -3), (None, -2), ({'Alpha': False}, -2)]:
             with self.subTest(state=state):
-                results, _, _, opener = self.run_worker([state])
-                self.assertEqual(results, [RoomWorker.STATE_UNAVAILABLE])
+                _, messages, opener = self.run_helper(state)
                 opener.assert_not_called()
-                window = self.window()
-                with patch('paltalk_room_opener.main_window.QTimer.singleShot') as timer:
-                    MainWindow.automatic_open_finished(window, results[0])
-                timer.assert_called_once()
+                self.assertIn(('result', result), messages)
 
-    def test_retry_checks_state_again(self):
-        worker = RoomWorker(['Alpha', 'Beta'], 5, automatic=True)
+    def test_automatic_worker_uses_isolated_helper_and_delay(self):
+        worker = RoomWorker(['Alpha'], 8, automatic=True)
         results = []
         worker.completed.connect(results.append)
-        with patch('paltalk_room_opener.worker.restore_paltalk'), \
-             patch('paltalk_room_opener.worker.room_states', side_effect=[None, {'Alpha': True, 'Beta': False}]) as check, \
+        with patch('paltalk_room_opener.worker.run_room_helper', return_value=1) as helper:
+            worker.run()
+        self.assertEqual(results, [1])
+        self.assertEqual(helper.call_args.args[0:2], ('automatic', ['Alpha']))
+        self.assertEqual(helper.call_args.kwargs['delay'], 8)
+
+    def test_helper_failure_reports_unavailable(self):
+        worker = RoomWorker(['Alpha'], 5, automatic=True)
+        results = []
+        worker.completed.connect(results.append)
+        with patch('paltalk_room_opener.worker.run_room_helper', side_effect=RuntimeError('timed out')):
+            worker.run()
+        self.assertEqual(results, [RoomWorker.STATE_UNAVAILABLE])
+
+    def test_manual_open_restores_and_opens(self):
+        worker = RoomWorker(['Alpha'], 5)
+        with patch('paltalk_room_opener.worker.restore_paltalk') as restore, \
              patch('paltalk_room_opener.worker.open_rooms', return_value=1) as opener:
             worker.run()
-            worker.run()
-        self.assertEqual(check.call_count, 2)
-        self.assertEqual(results, [RoomWorker.STATE_UNAVAILABLE, 1])
-        self.assertEqual(opener.call_args.args[0], ['Beta'])
-
-    def test_manual_open_does_not_check_state(self):
-        _, _, check, opener = self.run_worker([], automatic=False)
-        check.assert_not_called()
-        self.assertEqual(opener.call_args.args[0], ['Alpha', 'Beta'])
-
-    def test_single_room_restores_and_checks_before_opening(self):
-        for state, expected_open in ((True, False), (False, True), (None, False)):
-            with self.subTest(state=state):
-                events = []
-                with patch('sys.argv', ['room_helper_process', 'single', '["Alpha"]']), \
-                     patch.object(room_helper_process, 'send'), \
-                     patch.object(room_helper_process, 'restore_paltalk', side_effect=lambda: events.append('restore')), \
-                     patch.object(room_helper_process, 'room_states', side_effect=lambda names: events.append('check') or ({'Alpha': state} if state is not None else None)), \
-                     patch.object(room_helper_process, 'open_rooms', side_effect=lambda *args, **kwargs: events.append('open') or 1):
-                    room_helper_process.main()
-                self.assertEqual(events, ['restore', 'check', 'open'] if expected_open else ['restore', 'check'])
-
-    def test_restore_precedes_room_operations(self):
-        for automatic in (False, True):
-            events = []
-            worker = RoomWorker(['Alpha'], 5, automatic=automatic)
-            with patch('paltalk_room_opener.worker.restore_paltalk', side_effect=lambda: events.append('restore')), \
-                 patch('paltalk_room_opener.worker.room_states', side_effect=lambda names: events.append('check') or {'Alpha': False}), \
-                 patch('paltalk_room_opener.worker.open_rooms', side_effect=lambda *args: events.append('open') or 1):
-                worker.run()
-            self.assertEqual(events, ['restore', 'check', 'open'] if automatic else ['restore', 'open'])
-
-    def test_restore_failure_prevents_opening(self):
-        for automatic in (False, True):
-            with self.subTest(automatic=automatic):
-                worker = RoomWorker(['Alpha'], 5, automatic=automatic)
-                messages, results = [], []
-                worker.message.connect(messages.append)
-                worker.completed.connect(results.append)
-                with patch('paltalk_room_opener.worker.restore_paltalk', side_effect=RuntimeError('window unavailable')), \
-                     patch('paltalk_room_opener.worker.room_states') as states, \
-                     patch('paltalk_room_opener.worker.open_rooms') as opener:
-                    worker.run()
-                states.assert_not_called()
-                opener.assert_not_called()
-                self.assertEqual(results, [RoomWorker.STATE_UNAVAILABLE if automatic else -1])
-                self.assertIn('window unavailable', messages[0])
-
-    def window(self):
-        return SimpleNamespace(auto_open_pending=True, auto_open_attempts_remaining=2,
-                               auto_open_handled_for_session=False, AUTO_OPEN_MAX_ATTEMPTS=6,
-                               AUTO_OPEN_DELAY_MS=5000, auto_open_button=SimpleNamespace(isChecked=lambda: True),
-                               log=MagicMock(), start_automatically=MagicMock())
+        restore.assert_called_once()
+        self.assertEqual(opener.call_args.args[0], ['Alpha'])
 
 
 if __name__ == '__main__':

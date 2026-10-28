@@ -218,6 +218,8 @@ class CameraScanner:
 
     def scan(self):
         stopped = getattr(self, 'stopped', lambda: False)
+        progress = getattr(self, 'progress', lambda stage: None)
+        progress('finding the visible room')
         if stopped():
             raise _ScanStopped()
         a = self.a
@@ -247,6 +249,7 @@ class CameraScanner:
         if width < 30 or height < 30 or width > 3000 or height > 4000:
             raise RuntimeError('Room member list has invalid screen bounds.')
         image = ImageGrab.grab(bbox=(left, top, left + width, top + height), all_screens=True)
+        progress('reading the room list')
         lines = _ocr(image, stopped)
         sections = _sections(lines, height)
         self.ocr_lines = [f"{label}: {line['text'].strip()}"
@@ -290,11 +293,13 @@ class CameraScanner:
         color_image = enhanced
         enhanced = ImageOps.autocontrast(ImageOps.grayscale(color_image))
         enhanced = enhanced.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
+        progress('reading enhanced names')
         enhanced_lines = _ocr(enhanced, stopped)
         # A differently processed color capture resolves cases where one pass
         # drops a word or confuses similar characters such as 1 and l.
         third_image = ImageEnhance.Contrast(color_image).enhance(1.5)
         third_image = third_image.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
+        progress('checking name readings')
         third_lines = _ocr(third_image, stopped)
         rows = []
         self.ocr_comparisons = []
@@ -325,17 +330,23 @@ class CameraScanner:
         if (stopped() or room != getattr(self, 'room_identity', None) or
                 conflict or len(matches) != 1 or matches[0][1] != 'available'):
             return False
+        getattr(self, 'progress', lambda stage: None)('opening a camera')
         matches[0][2].GetCurrentPattern(self.a.InvokePattern.Pattern).Invoke()
+        getattr(self, 'progress', lambda stage: None)('camera invocation finished')
         return True
 
 
-def watch_cameras(names, log, stopped, invoked=None, failed=None):
+def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None):
     if invoked is None:
         invoked = log
     if failed is None:
         failed = log
+    if progress is None:
+        progress = lambda stage: None
+    progress('starting camera scanner')
     scanner = CameraScanner()
     scanner.stopped = stopped
+    scanner.progress = progress
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
     last_error = None
     attempts = {}
@@ -405,6 +416,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None):
             if message != last_error:
                 log(f'Camera watcher: {message}')
                 last_error = message
+        progress('waiting for the next scan')
         for _ in range(20):
             if stopped():
                 break

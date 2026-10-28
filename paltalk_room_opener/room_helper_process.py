@@ -13,10 +13,11 @@ def send(kind, value):
 
 def main():
     action, names_json = sys.argv[1:3]
+    delay = float(sys.argv[3]) if len(sys.argv) > 3 else 5
     names = json.loads(names_json)
     stage = 'room-state scan'
     try:
-        if action == 'single':
+        if action in ('single', 'automatic'):
             stage = 'restoring Paltalk'
             send('stage', stage)
             restore_paltalk()
@@ -30,9 +31,12 @@ def main():
             send('message', 'Could not determine open room status.')
             send('result', -2)
             return
+        for name in names:
+            if states[name]:
+                send('message', f'Already open, skipping room: {name}')
         names = [name for name in names if not states[name]]
         if not names:
-            send('message', 'Room is already open; skipping.')
+            send('message', 'All configured rooms are already open.')
             send('result', -3)
             return
         stage = 'finding room tile'
@@ -41,7 +45,7 @@ def main():
             nonlocal stage
             stage = 'invoking room tile' if value == 'invoking' else value
             send('stage', stage)
-        count = open_rooms(names, 5, lambda message: send('message', message), lambda: False, stage=update_stage)
+        count = open_rooms(names, delay, lambda message: send('message', message), lambda: False, stage=update_stage)
         send('result', count)
     except Exception as exc:
         send('error', f'{stage}: {str(exc).splitlines()[0] or type(exc).__name__}')

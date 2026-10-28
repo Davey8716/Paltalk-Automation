@@ -36,8 +36,6 @@ class StartInTrayTests(unittest.TestCase):
                 app = MagicMock()
                 with patch.object(main, 'SingleInstance', return_value=instance), \
                      patch.object(main, 'QApplication', return_value=app), \
-                     patch.object(settings, 'migrate_legacy_settings'), \
-                     patch.object(settings, 'migrate_recent_history'), \
                      patch.object(main, 'MainWindow', return_value=window):
                     main.main()
                 self.assertEqual(window.show.call_count, int(visible))

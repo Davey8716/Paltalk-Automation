@@ -49,6 +49,19 @@ class RoomHighlightTests(unittest.TestCase):
         self.update({'Alpha': True, 'Beta': True})
         self.assertTrue(self.fields[1].property('roomOpen'))
 
+    def test_room_buttons_follow_mode_availability(self):
+        self.window.rooms = [QLineEdit(f'Room {i}') for i in range(1, 6)]
+        self.window.open_room_buttons = [QPushButton() for _ in self.window.rooms]
+        for field in self.window.rooms[3:]:
+            field.setProperty('roomAvailable', False)
+        MainWindow.update_room_buttons(self.window)
+        self.assertEqual([button.isEnabled() for button in self.window.open_room_buttons],
+                         [True, True, True, False, False])
+        for field in self.window.rooms[3:]:
+            field.setProperty('roomAvailable', True)
+        MainWindow.update_room_buttons(self.window)
+        self.assertTrue(all(button.isEnabled() for button in self.window.open_room_buttons))
+
     def test_close_all_requires_a_detected_open_configured_room(self):
         for states in (None, {}, {'Alpha': False, 'Beta': False}, {'Other': True}):
             self.update(states)

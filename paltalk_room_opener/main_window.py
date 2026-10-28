@@ -731,15 +731,19 @@ class MainWindow(QMainWindow):
             name = field.text().strip()
             known = self.room_states is not None and name in self.room_states
             is_open = known and self.room_states[name]
-            if field.property("roomOpen") != bool(is_open):
-                field.setProperty("roomOpen", bool(is_open))
+            highlight_open = bool(is_open and field.property('roomAvailable') is not False)
+            if field.property("roomOpen") != highlight_open:
+                field.setProperty("roomOpen", highlight_open)
                 field.style().unpolish(field)
                 field.style().polish(field)
             action = "Close" if is_open else "Open"
             button.setText(action)
             button.setAccessibleName(f"{action} Room {index + 1}")
             button.setToolTip(f"{action} the Paltalk room in Room {index + 1}" if known else "Restore Paltalk and check the room before opening")
-            self.set_button_enabled(button, bool(name and not self.worker and not self.close_room_worker))
+            self.set_button_enabled(button, bool(
+                name and field.property('roomAvailable') is not False
+                and not self.worker and not self.close_room_worker
+            ))
         if hasattr(self, 'other_rooms_layout'):
             self.update_other_rooms()
         if hasattr(self, 'close_all_button'):
@@ -751,7 +755,8 @@ class MainWindow(QMainWindow):
             ))
 
     def update_other_rooms(self):
-        configured = {field.text().strip() for field in self.rooms if field.text().strip()}
+        configured = {field.text().strip() for field in self.rooms
+                      if field.text().strip() and field.property('roomAvailable') is not False}
         names = list(dict.fromkeys(name for name in self.other_open_names if name not in configured))
         while self.other_rooms_layout.count():
             item = self.other_rooms_layout.takeAt(0)
@@ -850,6 +855,7 @@ class MainWindow(QMainWindow):
             label.style().polish(label)
             field.style().unpolish(field)
             field.style().polish(field)
+        self.update_room_buttons()
 
     def stop(self):
         self.auto_open_pending = False

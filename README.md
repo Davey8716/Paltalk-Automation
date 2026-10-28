@@ -33,7 +33,7 @@ While Paltalk's Rooms view and its Recently Visited section are visible, the app
 
 Use the **Open** or **Close** button beside a room name to manage that room on its own. The button reflects the detected room state and the saved room name remains in the list. If the state is unavailable, **Open** restores Paltalk and checks whether the room is already open first. Opening still requires the tile to be visible in Paltalk's My Rooms / Rooms view. The activity log reports whether a control was invoked; an invocation does not independently verify the result.
 
-**Other open rooms** shows detected rooms outside all five configured entries. Each row has a Close button and disappears after the room closes. The list is not saved. **Close all** restores and maximizes Paltalk, then checks and closes detected open rooms from both lists, regardless of the selected mode. Room detection requires Paltalk to be available; the last known list remains visible when a scan is unavailable.
+**Other open rooms** shows detected rooms outside the active configured entries. In Regular mode, open rooms in positions 4–5 also appear there. Each row has a Close button and disappears after the room closes. The list is not saved. **Close all** restores and maximizes Paltalk, then checks and closes detected open rooms from both lists, regardless of the selected mode. Room detection requires Paltalk to be available; the last known list remains visible when a scan is unavailable.
 
 The delay between rooms is at least five seconds to give rooms time to load. Previously saved delays below five seconds are raised to five seconds.
 

@@ -29,6 +29,8 @@ Closing the window keeps the app running in the Windows notification area, inclu
 
 Reorder rooms by dragging the ⋮⋮ handle beside a name onto another room field, or by dragging selected room text onto another field. The room moves to that position and the new order is saved. Regular mode opens the first three positions; VIP mode includes all five.
 
+Use **Recently visited** while Paltalk's Rooms view is open to list the rooms in its Recently Visited section. Select a name and click **Copy selected name**, or double-click it, then paste it into a room field. The list follows Paltalk's current recent-room filter.
+
 Use the **Open** or **Close** button beside a room name to manage that room on its own. The button reflects the detected room state and the saved room name remains in the list. Opening still requires the tile to be visible in Paltalk's My Rooms / Rooms view. The activity log reports whether a control was invoked; an invocation does not independently verify the result.
 
 **Close all** closes all detected open rooms named in the five configured entries, regardless of the selected mode. Rooms not listed in the app are not included.

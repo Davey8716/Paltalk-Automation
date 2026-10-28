@@ -3,7 +3,7 @@
 from PySide6.QtCore import QMimeData, Qt, QTimer
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel,
+    QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
     QStyle, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 from . import settings
 from .automation import is_paltalk_running
 from .styles import APP_STYLE
-from .worker import CameraWorker, CloseAllRoomsWorker, CloseRoomWorker, RoomStateWorker, RoomWorker
+from .worker import CameraWorker, CloseAllRoomsWorker, CloseRoomWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
 
 
 class RoomNameField(QLineEdit):
@@ -48,11 +48,41 @@ class RoomNameField(QLineEdit):
 
 
 class RoomDragHandle(QLabel):
-    def __init__(self, index):
+    def __init__(self, index, reorder):
         super().__init__('⋮⋮')
         self.room_index = index
+        self.reorder = reorder
+        self.setObjectName('roomDragHandle')
+        self.setAcceptDrops(True)
         self.setToolTip('Drag to move this room to another position')
         self.setCursor(Qt.CursorShape.OpenHandCursor)
+
+    def set_highlighted(self, highlighted):
+        self.setProperty('dragHighlight', highlighted)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def dragEnterEvent(self, event):
+        if isinstance(event.source(), (RoomDragHandle, RoomNameField)) and event.source() is not self:
+            self.set_highlighted(True)
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if isinstance(event.source(), (RoomDragHandle, RoomNameField)) and event.source() is not self:
+            event.acceptProposedAction()
+
+    def dragLeaveEvent(self, event):
+        self.set_highlighted(False)
+        event.accept()
+
+    def dropEvent(self, event):
+        self.set_highlighted(False)
+        source = event.source()
+        if isinstance(source, (RoomDragHandle, RoomNameField)) and source is not self:
+            self.reorder(source.room_index, self.room_index)
+            event.setDropAction(Qt.DropAction.CopyAction)
+            event.accept()
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -66,7 +96,11 @@ class RoomDragHandle(QLabel):
             mime = QMimeData()
             mime.setText('room')
             drag.setMimeData(mime)
-            drag.exec(Qt.DropAction.CopyAction)
+            self.set_highlighted(True)
+            try:
+                drag.exec(Qt.DropAction.CopyAction)
+            finally:
+                self.set_highlighted(False)
         else:
             super().mouseMoveEvent(event)
 
@@ -83,6 +117,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.close_room_worker = None
         self.room_state_worker = None
+        self.recent_rooms_worker = None
         self.room_states = None
         self.camera_worker = None
         self._closing_pending = False
@@ -101,7 +136,12 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(38, 32, 38, 32)
         layout.setSpacing(18)
-        layout.addWidget(QLabel("Enter exact room names. Drag a ⋮⋮ handle or selected text to reorder."))
+        instruction_row = QHBoxLayout()
+        instruction_row.addWidget(QLabel("Enter exact room names. Drag a ⋮⋮ handle or selected text to reorder."))
+        self.recent_rooms_button = QPushButton("Recently visited")
+        self.recent_rooms_button.setFixedSize(200,35)
+        instruction_row.addWidget(self.recent_rooms_button)
+        layout.addLayout(instruction_row)
 
         form = QGridLayout()
         form.setColumnStretch(2, 1)
@@ -114,7 +154,7 @@ class MainWindow(QMainWindow):
             field.setPlaceholderText(f"Room {index + 1} name")
             field.setMaximumWidth(580)
             label = QLabel(f"Room {index + 1}:")
-            form.addWidget(RoomDragHandle(index), index, 0)
+            form.addWidget(RoomDragHandle(index, self.reorder_rooms), index, 0)
             form.addWidget(label, index, 1)
             form.addWidget(field, index, 2)
             open_button = QPushButton("Open")
@@ -179,6 +219,7 @@ class MainWindow(QMainWindow):
         self.save_button.clicked.connect(self.save_current_settings)
         self.start_button.clicked.connect(self.toggle_opening)
         self.close_all_button.clicked.connect(self.close_all_rooms)
+        self.recent_rooms_button.clicked.connect(self.show_recent_rooms)
         self.mode_group.buttonClicked.connect(self.room_mode_changed)
         self.load_saved_settings()
         self.update_room_limit_appearance()
@@ -194,6 +235,55 @@ class MainWindow(QMainWindow):
         self.room_state_timer.start()
         self.refresh_room_states()
         self.setup_tray()
+
+    def show_recent_rooms(self):
+        if self.recent_rooms_worker:
+            return
+        self.recent_rooms_button.setEnabled(False)
+        self.recent_rooms_worker = RecentRoomsWorker()
+        self.recent_rooms_worker.result.connect(self.recent_rooms_received)
+        self.recent_rooms_worker.finished.connect(self.recent_rooms_finished)
+        self.recent_rooms_worker.start()
+
+    def recent_rooms_finished(self):
+        self.recent_rooms_worker = None
+        self.recent_rooms_button.setEnabled(True)
+
+    def recent_rooms_received(self, names, error):
+        if error:
+            QMessageBox.warning(self, "Recently visited", error)
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Recently visited rooms")
+        dialog.resize(560, 400)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Select a room and click Copy, or double-click its name."))
+        rooms = QListWidget()
+        rooms.addItems(names)
+        layout.addWidget(rooms)
+        if not names:
+            layout.addWidget(QLabel("No recently visited rooms found in the current Paltalk filter."))
+        copy_button = QPushButton("Copy selected name")
+        copy_button.setFixedSize(200,35)
+        copy_button.setEnabled(False)
+        feedback_timer = QTimer(dialog)
+        feedback_timer.setSingleShot(True)
+        def clear_copy_feedback():
+            copy_button.setText("Copy selected name")
+            copy_button.setStyleSheet("")
+        feedback_timer.timeout.connect(clear_copy_feedback)
+        rooms.itemClicked.connect(lambda item: copy_button.setEnabled(True))
+        def copy_item(item):
+            if item:
+                copy_button.setEnabled(True)
+                QApplication.clipboard().setText(item.text())
+                copy_button.setText("Copied!")
+                copy_button.setStyleSheet("QPushButton { background: #258c5a; color: white; }")
+                feedback_timer.start(1200)
+        copy_button.clicked.connect(lambda: copy_item(rooms.currentItem()))
+        rooms.itemDoubleClicked.connect(copy_item)
+        layout.addWidget(copy_button)
+        dialog.exec()
 
     def setup_tray(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -531,6 +621,8 @@ class MainWindow(QMainWindow):
             running = True
         if self.room_state_worker and self.room_state_worker.isRunning():
             running = True
+        if self.recent_rooms_worker and self.recent_rooms_worker.isRunning():
+            running = True
         if running:
             event.ignore()
             if not self._closing_pending:
@@ -550,7 +642,8 @@ class MainWindow(QMainWindow):
         if ((self.camera_worker and self.camera_worker.isRunning()) or
                 (self.worker and self.worker.isRunning()) or
                 (self.close_room_worker and self.close_room_worker.isRunning()) or
-                (self.room_state_worker and self.room_state_worker.isRunning())):
+                (self.room_state_worker and self.room_state_worker.isRunning()) or
+                (self.recent_rooms_worker and self.recent_rooms_worker.isRunning())):
             QTimer.singleShot(100, self._finish_close_when_stopped)
         else:
             self.close()

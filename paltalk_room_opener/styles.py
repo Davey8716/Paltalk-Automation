@@ -14,6 +14,8 @@ APP_STYLE = """
     QLabel[roomAvailable="false"], QLineEdit[roomAvailable="false"] {
         color: #7d8594;
     }
+    QLabel#roomDragHandle { padding: 6px; border-radius: 5px; }
+    QLabel#roomDragHandle[dragHighlight="true"] { background: #168ac5; color: white; }
     QLineEdit, QDoubleSpinBox, QPlainTextEdit {
         background: #11151c; border: 1px solid #4b5568;
         border-radius: 5px; padding: 8px;

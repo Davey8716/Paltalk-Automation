@@ -16,6 +16,62 @@ def is_paltalk_running():
     )
 
 
+def recently_visited_rooms():
+    """Read room tiles following Paltalk's Recently Visited section header."""
+    clr = import_module("clr")
+    root = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Microsoft.NET" / "assembly" / "GAC_MSIL"
+    for assembly in ("UIAutomationClient", "UIAutomationTypes"):
+        paths = sorted((root / assembly).glob(f"*/{assembly}.dll"))
+        clr.AddReference(str(paths[-1]) if paths else assembly)
+    a = import_module("System.Windows.Automation")
+    pids = {p.info["pid"] for p in psutil.process_iter(["pid", "name"])
+            if (p.info.get("name") or "").lower() == "paltalk.exe"}
+    windows = a.AutomationElement.RootElement.FindAll(a.TreeScope.Children,
+        a.PropertyCondition(a.AutomationElement.ControlTypeProperty, a.ControlType.Window))
+    for window in windows:
+        if window.Current.ProcessId not in pids:
+            continue
+        button = window.FindFirst(a.TreeScope.Descendants,
+            a.PropertyCondition(a.AutomationElement.NameProperty, "BaseButton133"))
+        if button is None:
+            continue
+        walker = a.TreeWalker.ControlViewWalker
+        header = walker.GetParent(button)
+        if header is None:
+            continue
+        container = walker.GetParent(header)
+        if container is None or header.Current.ClassName != "ui::rooms::ClosableListWidget":
+            continue
+
+        def read_tiles():
+            children = container.FindAll(a.TreeScope.Children, a.Condition.TrueCondition)
+            after_header = False
+            names = []
+            for child in children:
+                if not after_header:
+                    after_header = child.Equals(header)
+                elif child.Current.ClassName == "ui::rooms::RoomTiles":
+                    name = child.Current.Name
+                    if name and name not in names:
+                        names.append(name)
+                else:
+                    break
+            return names
+
+        names = read_tiles()
+        if names:
+            return names
+        # The list may be collapsed. Restore the original state even if reading fails.
+        toggle = button.GetCurrentPattern(a.InvokePattern.Pattern)
+        toggle.Invoke()
+        try:
+            time.sleep(0.5)
+            return read_tiles()
+        finally:
+            toggle.Invoke()
+    raise RuntimeError("Recently Visited was not found. Open Paltalk's Rooms view and try again.")
+
+
 def _close_buttons(a):
     """Find Paltalk buttons whose automation properties identify a close action."""
     pids = {p.info["pid"] for p in psutil.process_iter(["pid", "name"])

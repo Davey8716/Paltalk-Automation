@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QThread, Signal
 
-from .automation import close_room, open_rooms, room_states
+from .automation import close_room, open_rooms, room_states, recently_visited_rooms
 from .camera_automation import watch_cameras
 
 
@@ -65,6 +65,16 @@ class RoomStateWorker(QThread):
             self.result.emit(room_states(self.names))
         except Exception:
             self.result.emit(None)
+
+
+class RecentRoomsWorker(QThread):
+    result = Signal(object, str)
+
+    def run(self):
+        try:
+            self.result.emit(recently_visited_rooms(), "")
+        except Exception as exc:
+            self.result.emit([], str(exc))
 
 
 class CameraWorker(QThread):

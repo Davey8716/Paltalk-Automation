@@ -4,6 +4,48 @@ from PySide6.QtCore import QThread, Signal
 
 from .automation import close_room, open_rooms, room_states, recently_visited_rooms
 from .camera_automation import watch_cameras
+from .chat_reader import read_selected_room_chat
+from .chat_matches import ChatMatchTracker
+from .settings import load_admin_phrases
+
+
+class ChatReaderWorker(QThread):
+    message = Signal(str)
+    match = Signal(str)
+
+    def __init__(self, phrases):
+        super().__init__()
+        self.tracker = ChatMatchTracker(phrases)
+
+    def run(self):
+        room_id = None
+        seen = set()
+        last_error = None
+        while not self.isInterruptionRequested():
+            try:
+                snapshot = read_selected_room_chat()
+                self.tracker.phrases = tuple(p for p in load_admin_phrases() if p.strip())
+                if snapshot.room_id != room_id:
+                    room_id = snapshot.room_id
+                    seen.clear()
+                    self.message.emit('Reading selected room chat.')
+                last_error = None
+                for item, phrase in self.tracker.scan(snapshot):
+                    self.match.emit(f'Room: name unavailable (ID {snapshot.room_id})\nUser: {item.sender}\nMessage: {item.text}\nPhrase: {phrase}\n')
+                for item in snapshot.messages:
+                    key = (item.runtime_id, item.sender, item.text)
+                    if key not in seen:
+                        seen.add(key)
+                        self.message.emit(f'{item.sender}: {item.text}')
+            except Exception as exc:
+                error = str(exc)
+                if error != last_error:
+                    self.message.emit(f'Chat reader: {error}')
+                    last_error = error
+            for _ in range(20):
+                if self.isInterruptionRequested():
+                    break
+                self.msleep(100)
 
 
 class RoomWorker(QThread):

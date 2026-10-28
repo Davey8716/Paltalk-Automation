@@ -8,6 +8,7 @@ from pathlib import Path
 APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "PaltalkRoomOpener"
 SETTINGS_PATH = APP_DATA_DIR / "room_names.json"
 CAMERA_SETTINGS_PATH = APP_DATA_DIR / "camera_names.json"
+ADMIN_SETTINGS_PATH = APP_DATA_DIR / "admin_actions.json"
 APP_STATE_PATH = APP_DATA_DIR / "app_state.json"
 RECENT_ROOMS_PATH = APP_DATA_DIR / "recent_rooms.json"
 
@@ -58,6 +59,22 @@ def load_camera_settings():
         return json.loads(CAMERA_SETTINGS_PATH.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+
+
+def load_admin_phrases():
+    try:
+        data = json.loads(ADMIN_SETTINGS_PATH.read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        return []
+    phrases = data.get('banned_phrases') if isinstance(data, dict) else None
+    if not isinstance(phrases, list) or any(not isinstance(phrase, str) for phrase in phrases):
+        raise ValueError('Saved banned phrases must be a list of text phrases.')
+    return phrases
+
+
+def save_admin_phrases(phrases):
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    ADMIN_SETTINGS_PATH.write_text(json.dumps({'banned_phrases': phrases}, indent=2, ensure_ascii=False), encoding='utf-8')
 
 
 def save_camera_settings(names, start_on_paltalk, alphabetical=False):

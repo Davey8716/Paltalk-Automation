@@ -21,6 +21,7 @@ class RoomHighlightTests(unittest.TestCase):
         self.window = SimpleNamespace(
             rooms=self.fields, open_room_buttons=self.buttons, room_states={},
             worker=None, close_room_worker=None,
+            close_all_button=QPushButton(),
             set_button_enabled=MainWindow.set_button_enabled,
         )
 
@@ -47,6 +48,21 @@ class RoomHighlightTests(unittest.TestCase):
         self.assertFalse(any(button.isEnabled() for button in self.buttons))
         self.update({'Alpha': True, 'Beta': True})
         self.assertTrue(self.fields[1].property('roomOpen'))
+
+    def test_close_all_requires_a_detected_open_configured_room(self):
+        for states in (None, {}, {'Alpha': False, 'Beta': False}, {'Other': True}):
+            self.update(states)
+            self.assertFalse(self.window.close_all_button.isEnabled())
+        self.update({'Alpha': True})
+        self.assertTrue(self.window.close_all_button.isEnabled())
+        self.fields[0].setText('Gamma')
+        self.fields[2].setText('Gamma')
+        self.update({'Alpha': True})
+        self.assertFalse(self.window.close_all_button.isEnabled())
+        self.update({'Beta': True})
+        self.window.close_room_worker = object()
+        MainWindow.update_room_buttons(self.window)
+        self.assertFalse(self.window.close_all_button.isEnabled())
 
     def test_unavailable_scan_preserves_last_open_state(self):
         self.update({'Alpha': True, 'Beta': False})

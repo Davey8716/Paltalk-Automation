@@ -665,7 +665,8 @@ class MainWindow(QMainWindow):
             self.set_button_enabled(button, bool(name and not self.worker and not self.close_room_worker))
         if hasattr(self, 'close_all_button'):
             self.set_button_enabled(self.close_all_button, bool(
-                any(field.text().strip() for field in self.rooms)
+                self.room_states is not None
+                and any(self.room_states.get(field.text().strip(), False) for field in self.rooms if field.text().strip())
                 and not self.worker and not self.close_room_worker
             ))
 

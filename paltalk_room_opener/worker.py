@@ -70,6 +70,7 @@ class RoomStateWorker(QThread):
 class CameraWorker(QThread):
     message = Signal(str)
     invoked = Signal(str)
+    failed = Signal(str)
 
     def __init__(self, names):
         super().__init__()
@@ -77,6 +78,7 @@ class CameraWorker(QThread):
 
     def run(self):
         try:
-            watch_cameras(self.names, self.message.emit, self.isInterruptionRequested, self.invoked.emit)
+            watch_cameras(self.names, self.message.emit, self.isInterruptionRequested,
+                          self.invoked.emit, self.failed.emit)
         except Exception as exc:
             self.message.emit(f'Camera watcher error: {exc}')

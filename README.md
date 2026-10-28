@@ -45,4 +45,4 @@ Display a room with its Mic Queue or On Cam heading and member rows visible and 
 
 The watcher checks three OCR readings and attempts to remove colored badges beside names. One complete reading that exactly matches a saved username can open a camera even if the other readings differ. Rows matching multiple saved usernames and usernames matching multiple rows are skipped. OCR can misread a different person's name as a saved username, so an exact OCR match is not a guarantee of identity. When a name cannot be matched, the activity log includes the visible On Cam text and readings matched to camera buttons. These diagnostics can include other people’s usernames.
 
-After invoking a camera, the watcher waits four seconds before opening another. Stop interrupts that wait and cancels an OCR process in progress.
+After invoking a camera, the watcher waits one second before opening another. Stop interrupts that wait and cancels an OCR process in progress.

@@ -328,9 +328,11 @@ class CameraScanner:
         return True
 
 
-def watch_cameras(names, log, stopped, invoked=None):
+def watch_cameras(names, log, stopped, invoked=None, failed=None):
     if invoked is None:
         invoked = log
+    if failed is None:
+        failed = log
     scanner = CameraScanner()
     scanner.stopped = stopped
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
@@ -378,7 +380,7 @@ def watch_cameras(names, log, stopped, invoked=None):
                     status = matches[0][1]
                 if reported.get(name) != status:
                     if status not in ('available', 'open'):
-                        log(f'{name}: {status}.')
+                        failed(f'{name}: {status}.')
                     reported[name] = status
                 if status != 'available':
                     continue
@@ -389,12 +391,12 @@ def watch_cameras(names, log, stopped, invoked=None):
                 if scanner.open_if_available(name, stopped, names):
                     invoked(f'Invoked camera button for {name}; check the video view to confirm it opened.')
                     # Let Paltalk finish opening the view before invoking another.
-                    for _ in range(40):
+                    for _ in range(10):
                         if stopped():
                             break
                         time.sleep(.1)
                 else:
-                    log(f'Skipped {name}: the row changed or could not be verified.')
+                    failed(f'Skipped {name}: the row changed or could not be verified.')
         except _ScanStopped:
             break
         except Exception as exc:

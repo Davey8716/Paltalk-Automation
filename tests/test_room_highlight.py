@@ -70,6 +70,20 @@ class RoomHighlightTests(unittest.TestCase):
         self.assertTrue(all(button.isEnabled() for button in self.buttons))
         self.assertTrue(self.window.close_all_button.isEnabled())
 
+    def test_close_all_does_not_flash_buttons(self):
+        self.window.close_room_worker = object()
+        self.window.closing_all_rooms = True
+        self.update({'Alpha': True, 'Beta': False})
+        self.assertTrue(all(button.isEnabled() for button in self.buttons))
+        self.assertTrue(self.window.close_all_button.isEnabled())
+
+    def test_single_room_action_keeps_buttons_visually_stable(self):
+        self.window.worker = SimpleNamespace(check_existing=True)
+        self.update({'Alpha': False, 'Beta': True})
+        self.assertTrue(all(button.isEnabled() for button in self.buttons))
+        self.assertEqual(self.buttons[0].text(), 'Open')
+        self.assertTrue(self.window.close_all_button.isEnabled())
+
     def test_close_all_requires_a_detected_open_configured_room(self):
         for states in (None, {}, {'Alpha': False, 'Beta': False}, {'Other': True}):
             self.update(states)

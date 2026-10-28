@@ -1,7 +1,9 @@
 """Windows UI Automation routines for Paltalk room tiles."""
 
 import os
+import ctypes
 import time
+from ctypes import wintypes
 from importlib import import_module
 from pathlib import Path
 
@@ -82,28 +84,156 @@ def _paltalk_windows(a):
     return [window for window in windows if window.Current.ProcessId in pids]
 
 
-def restore_paltalk():
-    """Restore minimized Paltalk windows before inspecting their room controls."""
-    clr = import_module('clr')
-    root = Path(os.environ.get('WINDIR', r'C:\Windows')) / 'Microsoft.NET' / 'assembly' / 'GAC_MSIL'
-    for assembly in ('UIAutomationClient', 'UIAutomationTypes'):
-        paths = sorted((root / assembly).glob(f'*/{assembly}.dll'))
-        clr.AddReference(str(paths[-1]) if paths else assembly)
-    a = import_module('System.Windows.Automation')
-    windows = _paltalk_windows(a)
-    if not windows:
-        raise RuntimeError("Paltalk's window is unavailable.")
-    restored = False
-    for window in windows:
+class PaltalkWindowNotFound(RuntimeError):
+    """The Paltalk main window is unavailable or cannot be selected safely."""
+
+
+def _paltalk_main_window(user32):
+    """Find the unowned, maximizable Paltalk window, including hidden windows."""
+    pids = {p.info['pid'] for p in psutil.process_iter(['pid', 'name'])
+            if (p.info.get('name') or '').lower() == 'paltalk.exe'}
+    windows = []
+    counts = {'top-level': 0, 'unowned': 0, 'maximizable': 0, 'title matches': 0, 'main-class matches': 0}
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+
+    @callback_type
+    def visit(hwnd, _):
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value not in pids:
+            return True
+        counts['top-level'] += 1
+        if user32.GetWindow(hwnd, 4):  # GW_OWNER
+            return True
+        counts['unowned'] += 1
+        style = user32.GetWindowLongW(hwnd, -16)  # GWL_STYLE
+        if not style & 0x00010000:  # WS_MAXIMIZEBOX
+            return True
+        counts['maximizable'] += 1
+        title = ctypes.create_unicode_buffer(user32.GetWindowTextLengthW(hwnd) + 1)
+        user32.GetWindowTextW(hwnd, title, len(title))
+        if title.value.strip().casefold() == 'paltalk':
+            counts['title matches'] += 1
+            class_name = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, class_name, len(class_name))
+            windows.append((hwnd, class_name.value))
+            if class_name.value.startswith('Qt') and class_name.value.endswith('QWindowOwnDCIcon'):
+                counts['main-class matches'] += 1
+        return True
+
+    if not user32.EnumWindows(visit, 0):
+        raise RuntimeError('Could not enumerate Paltalk windows.')
+    main_windows = [hwnd for hwnd, name in windows if name.startswith('Qt') and name.endswith('QWindowOwnDCIcon')]
+    if len(main_windows) == 1:
+        return main_windows[0]
+    if len(main_windows) > 1 or len(windows) != 1:
+        guidance = ' Open Paltalk from its tray icon or restart it.' if not counts['title matches'] else ''
+        raise PaltalkWindowNotFound(
+            f"Paltalk's main window is unavailable or ambiguous "
+            f"({len(pids)} Paltalk process(es); "
+            + ', '.join(f'{key}: {value}' for key, value in counts.items()) + ').' + guidance
+        )
+    return windows[0][0]
+
+
+def _wait_for_paltalk_main_window(user32, timeout=3.0):
+    deadline = time.monotonic() + timeout
+    while True:
         try:
-            pattern = window.GetCurrentPattern(a.WindowPattern.Pattern)
-            if pattern.Current.WindowVisualState == a.WindowVisualState.Minimized:
-                pattern.SetWindowVisualState(a.WindowVisualState.Normal)
-                restored = True
+            return _paltalk_main_window(user32)
+        except PaltalkWindowNotFound:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(min(0.2, max(0, deadline - time.monotonic())))
+
+
+def _desktop_context(user32):
+    """Return the worker's session and desktop names for troubleshooting."""
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+    kernel32.ProcessIdToSessionId.argtypes = [wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetThreadDesktop.argtypes = [wintypes.DWORD]
+    user32.GetThreadDesktop.restype = wintypes.HANDLE
+    user32.OpenInputDesktop.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    user32.OpenInputDesktop.restype = wintypes.HANDLE
+    user32.GetUserObjectInformationW.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    user32.CloseDesktop.argtypes = [wintypes.HANDLE]
+
+    def name(handle):
+        if not handle:
+            return 'unavailable'
+        needed = wintypes.DWORD()
+        user32.GetUserObjectInformationW(handle, 2, None, 0, ctypes.byref(needed))  # UOI_NAME
+        if not needed.value:
+            return 'unavailable'
+        buf = ctypes.create_unicode_buffer((needed.value + 1) // 2)
+        if not user32.GetUserObjectInformationW(handle, 2, buf, needed.value, ctypes.byref(needed)):
+            return 'unavailable'
+        return buf.value
+
+    session = wintypes.DWORD()
+    session_name = str(session.value) if kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(session)) else 'unavailable'
+    worker = name(user32.GetThreadDesktop(kernel32.GetCurrentThreadId()))
+    input_desktop = user32.OpenInputDesktop(0, False, 0x0001)  # DESKTOP_READOBJECTS
+    try:
+        interactive = name(input_desktop)
+    finally:
+        if input_desktop:
+            user32.CloseDesktop(input_desktop)
+    return f'session: {session_name}, worker desktop: {worker}, input desktop: {interactive}'
+
+
+def restore_paltalk():
+    """Restore and maximize Paltalk, and verify it is ready before continuing."""
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.ShowWindowAsync.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsZoomed.argtypes = [wintypes.HWND]
+    user32.IsWindow.argtypes = [wintypes.HWND]
+    try:
+        hwnd = _wait_for_paltalk_main_window(user32)
+    except PaltalkWindowNotFound as exc:
+        try:
+            context = _desktop_context(user32)
         except Exception:
-            continue
-    if restored:
-        time.sleep(0.5)
+            context = 'desktop context unavailable'
+        raise PaltalkWindowNotFound(f'{exc} ({context})') from exc
+    deadline = time.monotonic() + 5.0
+    requested = None
+    while True:
+        if not user32.IsWindow(hwnd):
+            try:
+                hwnd = _paltalk_main_window(user32)
+            except PaltalkWindowNotFound:
+                hwnd = None
+        if hwnd and user32.IsWindow(hwnd):
+            ready = user32.IsWindowVisible(hwnd) and user32.IsZoomed(hwnd)
+            if not ready and requested != hwnd:
+                if not user32.ShowWindowAsync(hwnd, 3):  # SW_MAXIMIZE also restores minimized windows
+                    raise RuntimeError('Windows could not request that Paltalk be maximized.')
+                requested = hwnd
+        else:
+            ready = False
+        if ready and user32.IsWindow(hwnd):
+            try:
+                selected = _paltalk_main_window(user32)
+                if selected == hwnd:
+                    return
+                hwnd = selected
+                requested = None
+            except PaltalkWindowNotFound:
+                pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError('Paltalk did not become visible and maximized within 5 seconds.')
+        time.sleep(0.1)
 
 
 def _close_buttons(a):

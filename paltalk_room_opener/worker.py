@@ -109,6 +109,12 @@ class RoomWorker(QThread):
 
     def run(self):
         try:
+            restore_paltalk()
+        except Exception as exc:
+            self.message.emit(f"Could not restore Paltalk: {exc}")
+            self.completed.emit(self.STATE_UNAVAILABLE if self.automatic else -1)
+            return
+        try:
             names = self.names
             if self.automatic:
                 try:

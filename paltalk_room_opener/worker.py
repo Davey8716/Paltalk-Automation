@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
-from .automation import close_room, open_rooms, room_states, recently_visited_rooms, restore_paltalk
+from .automation import close_room, open_rooms, room_states, recently_visited_rooms, restore_paltalk, is_paltalk_running
 from .camera_automation import watch_cameras
 from .chat_reader import ChatMessage, ChatSnapshot
 from .chat_matches import ChatMatchTracker
@@ -77,6 +77,17 @@ def run_room_helper(action, names, interrupted, message=None, timeout=20):
             process.kill()
         process.wait()
         process.stdout.close()
+
+
+class PaltalkProcessWorker(QThread):
+    result = Signal(bool)
+
+    def run(self):
+        try:
+            self.result.emit(is_paltalk_running())
+        except Exception:
+            # A failed scan should not be mistaken for Paltalk stopping.
+            pass
 
 
 class ChatReaderWorker(QThread):

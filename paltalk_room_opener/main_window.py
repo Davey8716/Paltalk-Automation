@@ -9,9 +9,8 @@ from PySide6.QtWidgets import (
 )
 
 from . import settings
-from .automation import is_paltalk_running
 from .styles import APP_STYLE
-from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
+from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
 
 
 class RoomNameField(QLineEdit):
@@ -117,6 +116,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.close_room_worker = None
         self.room_state_worker = None
+        self.paltalk_process_worker = None
         self._pending_single_start = False
         self.recent_rooms_worker = None
         self.room_states = None
@@ -448,7 +448,19 @@ class MainWindow(QMainWindow):
             self.worker.start()
 
     def check_for_paltalk_start(self):
-        paltalk_running = is_paltalk_running()
+        if self.paltalk_process_worker or self._quitting:
+            return
+        self.paltalk_process_worker = PaltalkProcessWorker()
+        self.paltalk_process_worker.result.connect(self.paltalk_process_received)
+        self.paltalk_process_worker.finished.connect(self.paltalk_process_finished)
+        self.paltalk_process_worker.start()
+
+    def paltalk_process_finished(self):
+        self.paltalk_process_worker = None
+
+    def paltalk_process_received(self, paltalk_running):
+        if self._quitting:
+            return
         if not paltalk_running:
             if self.paltalk_was_running:
                 self.log.appendPlainText("Paltalk stopped. Automatic opening is ready for its next session.")
@@ -492,7 +504,7 @@ class MainWindow(QMainWindow):
     def start_automatically(self):
         if not self.auto_open_pending:
             return
-        if self.auto_open_button.isChecked() and is_paltalk_running() and not self.worker:
+        if self.auto_open_button.isChecked() and self.paltalk_was_running and not self.worker:
             self.auto_open_attempts_remaining -= 1
             self.start(automatic=True)
         else:
@@ -693,6 +705,8 @@ class MainWindow(QMainWindow):
             running = True
         if self.recent_rooms_worker and self.recent_rooms_worker.isRunning():
             running = True
+        if self.paltalk_process_worker and self.paltalk_process_worker.isRunning():
+            running = True
         if running:
             event.ignore()
             if not self._closing_pending:
@@ -714,7 +728,8 @@ class MainWindow(QMainWindow):
                 (self.worker and self.worker.isRunning()) or
                 (self.close_room_worker and self.close_room_worker.isRunning()) or
                 (self.room_state_worker and self.room_state_worker.isRunning()) or
-                (self.recent_rooms_worker and self.recent_rooms_worker.isRunning())):
+                (self.recent_rooms_worker and self.recent_rooms_worker.isRunning()) or
+                (self.paltalk_process_worker and self.paltalk_process_worker.isRunning())):
             QTimer.singleShot(100, self._finish_close_when_stopped)
         else:
             self.close()

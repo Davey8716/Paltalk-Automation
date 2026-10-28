@@ -117,6 +117,7 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.close_room_worker = None
         self.room_state_worker = None
+        self._pending_single_start = False
         self.recent_rooms_worker = None
         self.room_states = None
         self.camera_worker = None
@@ -418,16 +419,16 @@ class MainWindow(QMainWindow):
         if not name:
             self.log.appendPlainText(f"Enter a room name in Room {index + 1} before opening it.")
             return
-        self.start_room_worker([name], False, f"room: {name}")
+        self.start_room_worker([name], False, f"room: {name}", check_existing=True)
 
-    def start_room_worker(self, names, automatic, description):
+    def start_room_worker(self, names, automatic, description, check_existing=False):
         if self.worker or self.close_room_worker or not self.save_current_settings():
             return
         if not automatic:
             self.auto_open_pending = False
             self.auto_open_attempts_remaining = 0
             self.auto_open_handled_for_session = True
-        self.worker = RoomWorker(names, self.delay.value(), automatic=automatic)
+        self.worker = RoomWorker(names, self.delay.value(), automatic=automatic, check_existing=check_existing)
         self.worker.message.connect(self.log.appendPlainText)
         if automatic:
             self.worker.completed.connect(self.automatic_open_finished)
@@ -439,7 +440,12 @@ class MainWindow(QMainWindow):
         self.set_button_enabled(self.close_all_button, False)
         prefix = "Automatically starting" if automatic else "Starting"
         self.log.appendPlainText(f"{prefix} {description}...")
-        self.worker.start()
+        if check_existing and self.room_state_worker:
+            self._pending_single_start = True
+            self.room_state_worker.requestInterruption()
+            self.log.appendPlainText('Waiting for the room-status scan to stop...')
+        else:
+            self.worker.start()
 
     def check_for_paltalk_start(self):
         paltalk_running = is_paltalk_running()
@@ -519,19 +525,29 @@ class MainWindow(QMainWindow):
         return "vip" if self.vip_button.isChecked() else "regular"
 
     def refresh_room_states(self):
-        if self.room_state_worker or self._quitting or self.close_room_worker:
+        if (self.room_state_worker or self._quitting or self.close_room_worker or
+                (self.worker and getattr(self.worker, 'check_existing', False))):
             return
         self.room_state_worker = RoomStateWorker([field.text().strip() for field in self.rooms])
         self.room_state_worker.result.connect(self.room_states_received)
+        self.room_state_worker.message.connect(self.log.appendPlainText)
         self.room_state_worker.finished.connect(self.room_state_finished)
         self.room_state_worker.start()
 
     def room_states_received(self, states):
+        if self.worker and getattr(self.worker, 'check_existing', False):
+            return
         self.room_states = None if self.close_room_worker else states
         self.update_room_buttons()
 
     def room_state_finished(self):
         self.room_state_worker = None
+        if self._pending_single_start:
+            self._pending_single_start = False
+            if self.worker and not self._quitting:
+                self.worker.start()
+            else:
+                self.worker = None
 
     @staticmethod
     def set_button_enabled(button, enabled):
@@ -552,8 +568,8 @@ class MainWindow(QMainWindow):
             action = "Close" if is_open else "Open"
             button.setText(action)
             button.setAccessibleName(f"{action} Room {index + 1}")
-            button.setToolTip(f"{action} the Paltalk room in Room {index + 1}" if known else "Room status unavailable")
-            self.set_button_enabled(button, bool(name and known and not self.worker and not self.close_room_worker))
+            button.setToolTip(f"{action} the Paltalk room in Room {index + 1}" if known else "Restore Paltalk and check the room before opening")
+            self.set_button_enabled(button, bool(name and not self.worker and not self.close_room_worker))
         if hasattr(self, 'close_all_button'):
             self.set_button_enabled(self.close_all_button, bool(
                 any(field.text().strip() for field in self.rooms)
@@ -638,6 +654,11 @@ class MainWindow(QMainWindow):
         self.auto_open_attempts_remaining = 0
         self.auto_open_handled_for_session = True
         if self.worker:
+            if self._pending_single_start:
+                self._pending_single_start = False
+                self.log.appendPlainText('Stopped before opening the room.')
+                self.finished()
+                return
             self.worker.requestInterruption()
             self.start_button.setEnabled(False)
             self.log.appendPlainText("Stopping after the current operation...")

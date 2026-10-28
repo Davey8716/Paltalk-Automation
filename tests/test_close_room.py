@@ -106,6 +106,17 @@ class CloseRoomTests(unittest.TestCase):
             restore_paltalk()
         user32.ShowWindowAsync.assert_not_called()
 
+    def test_hidden_non_minimized_window_reopens_using_executable(self):
+        user32 = MagicMock()
+        user32.IsWindowVisible.side_effect = [False, True]
+        user32.IsIconic.return_value = False
+        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
+             patch('paltalk_room_opener.automation._reopen_paltalk') as reopen, \
+             patch('paltalk_room_opener.automation.time.sleep'):
+            restore_paltalk()
+        reopen.assert_called_once_with()
+
     def test_missing_main_window_is_reopened_from_tray(self):
         user32 = MagicMock()
         missing = PaltalkWindowNotFound('no main window', processes=1, title_matches=0)

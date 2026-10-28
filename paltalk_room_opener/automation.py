@@ -215,14 +215,17 @@ def restore_paltalk():
     user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
     user32.ShowWindowAsync.argtypes = [wintypes.HWND, ctypes.c_int]
     user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsIconic.argtypes = [wintypes.HWND]
     user32.IsZoomed.argtypes = [wintypes.HWND]
     user32.IsWindow.argtypes = [wintypes.HWND]
+    reopened = False
     try:
         hwnd = _wait_for_paltalk_main_window(user32)
     except PaltalkWindowNotFound as exc:
         if exc.processes == 1 and exc.title_matches == 0:
             try:
                 _reopen_paltalk()
+                reopened = True
                 hwnd = _wait_for_paltalk_main_window(user32, timeout=5.0)
             except Exception as tray_exc:
                 raise RuntimeError(f'Could not reopen Paltalk: {tray_exc}') from tray_exc
@@ -241,7 +244,23 @@ def restore_paltalk():
             except PaltalkWindowNotFound:
                 hwnd = None
         if hwnd and user32.IsWindow(hwnd):
-            ready = user32.IsWindowVisible(hwnd) and user32.IsZoomed(hwnd)
+            visible = user32.IsWindowVisible(hwnd)
+            if not visible and not user32.IsIconic(hwnd) and not reopened:
+                try:
+                    _reopen_paltalk()
+                except Exception as exc:
+                    raise RuntimeError(f'Could not reopen Paltalk: {exc}') from exc
+                reopened = True
+            if not visible and reopened:
+                try:
+                    selected = _paltalk_main_window(user32)
+                    if selected != hwnd:
+                        hwnd = selected
+                        requested = None
+                        visible = user32.IsWindow(hwnd) and user32.IsWindowVisible(hwnd)
+                except PaltalkWindowNotFound:
+                    pass
+            ready = visible and user32.IsZoomed(hwnd)
             if not ready and requested != hwnd:
                 if not user32.ShowWindowAsync(hwnd, 3):  # SW_MAXIMIZE also restores minimized windows
                     raise RuntimeError('Windows could not request that Paltalk be maximized.')
@@ -318,7 +337,7 @@ def close_room(name, log):
     log(f"Invoked close for room: {name}")
 
 
-def open_rooms(names, delay, log, stopped):
+def open_rooms(names, delay, log, stopped, stage=None):
     """Queue visible room tiles, then invoke them in order."""
     clr = import_module("clr")
     gac_root = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Microsoft.NET" / "assembly" / "GAC_MSIL"
@@ -383,6 +402,8 @@ def open_rooms(names, delay, log, stopped):
             log("Stopped.")
             return 0
         try:
+            if stage:
+                stage('invoking')
             pattern.Invoke()
             log(f"Invoked room tile: {name}")
         except Exception:

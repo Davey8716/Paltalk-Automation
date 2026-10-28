@@ -48,15 +48,61 @@ class RoomHighlightTests(unittest.TestCase):
         self.update({'Alpha': True, 'Beta': True})
         self.assertTrue(self.fields[1].property('roomOpen'))
 
+    def test_unknown_state_allows_opening_named_rooms(self):
+        self.fields[1].clear()
+        self.update(None)
+        self.assertEqual([button.text() for button in self.buttons], ['Open', 'Open', 'Open'])
+        self.assertEqual([button.isEnabled() for button in self.buttons], [True, False, True])
+        window = SimpleNamespace(rooms=self.fields, room_states=None,
+                                 open_configured_room=MagicMock(), close_configured_room=MagicMock())
+        MainWindow.toggle_configured_room(window, 0)
+        window.open_configured_room.assert_called_once_with(0)
+        window.close_configured_room.assert_not_called()
+
     def test_refresh_runs_during_bulk_opening(self):
         worker = MagicMock()
         window = SimpleNamespace(room_state_worker=None, _quitting=False, worker=object(),
                                  close_room_worker=None, rooms=self.fields,
+                                 log=MagicMock(),
                                  room_states_received=lambda _: None,
                                  room_state_finished=lambda: None)
         with patch('paltalk_room_opener.main_window.RoomStateWorker', return_value=worker):
             MainWindow.refresh_room_states(window)
         worker.start.assert_called_once()
+
+    def test_refresh_does_not_overlap_single_room_opening(self):
+        window = SimpleNamespace(room_state_worker=None, _quitting=False,
+                                 worker=SimpleNamespace(check_existing=True), close_room_worker=None)
+        with patch('paltalk_room_opener.main_window.RoomStateWorker') as worker:
+            MainWindow.refresh_room_states(window)
+        worker.assert_not_called()
+
+    def test_single_room_waits_for_existing_scan_to_stop(self):
+        scan = MagicMock()
+        room_worker = MagicMock()
+        window = SimpleNamespace(
+            worker=None, close_room_worker=None, room_state_worker=scan,
+            save_current_settings=lambda: True, delay=SimpleNamespace(value=lambda: 5),
+            auto_open_pending=False, auto_open_attempts_remaining=0,
+            auto_open_handled_for_session=False, _pending_single_start=False,
+            _quitting=False, start_button=MagicMock(), close_all_button=MagicMock(),
+            open_room_buttons=[], set_button_enabled=MagicMock(), log=MagicMock(), finished=MagicMock(),
+        )
+        with patch('paltalk_room_opener.main_window.RoomWorker', return_value=room_worker):
+            MainWindow.start_room_worker(window, ['Alpha'], False, 'room: Alpha', check_existing=True)
+        scan.requestInterruption.assert_called_once()
+        room_worker.start.assert_not_called()
+        MainWindow.room_state_finished(window)
+        room_worker.start.assert_called_once()
+
+    def test_finished_restores_buttons_after_a_failed_single_room(self):
+        window = SimpleNamespace(start_button=MagicMock(), worker=object(),
+                                 update_room_buttons=MagicMock(), refresh_room_states=MagicMock())
+        MainWindow.finished(window)
+        window.start_button.setEnabled.assert_called_once_with(True)
+        self.assertIsNone(window.worker)
+        window.update_room_buttons.assert_called_once()
+        window.refresh_room_states.assert_called_once()
 
 
 if __name__ == '__main__':

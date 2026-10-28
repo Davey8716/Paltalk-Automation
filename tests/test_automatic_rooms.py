@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from paltalk_room_opener.main_window import MainWindow
 from paltalk_room_opener.worker import RoomWorker
+from paltalk_room_opener import room_helper_process
 
 
 class AutomaticRoomTests(unittest.TestCase):
@@ -73,6 +74,18 @@ class AutomaticRoomTests(unittest.TestCase):
         _, _, check, opener = self.run_worker([], automatic=False)
         check.assert_not_called()
         self.assertEqual(opener.call_args.args[0], ['Alpha', 'Beta'])
+
+    def test_single_room_restores_and_checks_before_opening(self):
+        for state, expected_open in ((True, False), (False, True), (None, False)):
+            with self.subTest(state=state):
+                events = []
+                with patch('sys.argv', ['room_helper_process', 'single', '["Alpha"]']), \
+                     patch.object(room_helper_process, 'send'), \
+                     patch.object(room_helper_process, 'restore_paltalk', side_effect=lambda: events.append('restore')), \
+                     patch.object(room_helper_process, 'room_states', side_effect=lambda names: events.append('check') or ({'Alpha': state} if state is not None else None)), \
+                     patch.object(room_helper_process, 'open_rooms', side_effect=lambda *args, **kwargs: events.append('open') or 1):
+                    room_helper_process.main()
+                self.assertEqual(events, ['restore', 'check', 'open'] if expected_open else ['restore', 'check'])
 
     def test_restore_precedes_room_operations(self):
         for automatic in (False, True):

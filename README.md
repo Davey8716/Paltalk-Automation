@@ -31,7 +31,7 @@ Reorder rooms by dragging the ⋮⋮ handle beside a name onto another room fiel
 
 Use **Recently visited** while Paltalk's Rooms view is open to collect rooms from its Recently Visited section. Each refresh adds new names to a saved history, keeping previously collected rooms even when they no longer appear in Paltalk's current filter. Select a name and click **Copy selected name**, or double-click it, then paste it into a room field. Saved rooms remain available if the Paltalk list cannot be read.
 
-Use the **Open** or **Close** button beside a room name to manage that room on its own. The button reflects the detected room state and the saved room name remains in the list. Opening still requires the tile to be visible in Paltalk's My Rooms / Rooms view. The activity log reports whether a control was invoked; an invocation does not independently verify the result.
+Use the **Open** or **Close** button beside a room name to manage that room on its own. The button reflects the detected room state and the saved room name remains in the list. If the state is unavailable, **Open** restores Paltalk and checks whether the room is already open first. Opening still requires the tile to be visible in Paltalk's My Rooms / Rooms view. The activity log reports whether a control was invoked; an invocation does not independently verify the result.
 
 **Close all** restores and maximizes Paltalk, then closes detected open rooms named in the five configured entries, regardless of the selected mode. Rooms not listed in the app are not included.
 

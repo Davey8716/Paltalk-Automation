@@ -264,7 +264,7 @@ class MainWindow(QMainWindow):
         self.room_state_timer.start()
         self.refresh_room_states()
         self.recent_rooms_timer = QTimer(self)
-        self.recent_rooms_timer.setInterval(10000)
+        self.recent_rooms_timer.setInterval(1000)
         self.recent_rooms_timer.timeout.connect(self.refresh_recent_rooms)
         self.recent_rooms_timer.start()
         self.setup_tray()

@@ -3,10 +3,10 @@
 from pathlib import Path
 
 from PySide6.QtCore import QMimeData, Qt, QTimer, QUrl
-from PySide6.QtGui import QDesktopServices, QDrag
+from PySide6.QtGui import QColor, QDesktopServices, QDrag
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
-    QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+    QGraphicsDropShadowEffect, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
     QStyle, QStyledItemDelegate, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -971,8 +971,19 @@ class MainWindow(QMainWindow):
         self.camera_alphabetical.setObjectName('cameraAlphabetical')
         self.camera_alphabetical.setCheckable(True)
         sort_controls.addWidget(self.camera_alphabetical)
-        export = QPushButton('Export to text')
-        sort_controls.addWidget(export)
+        self.camera_export = QPushButton('Export to text')
+        self.camera_export.setToolTip('Export the camera usernames to a text file.')
+        self.camera_export_glow = QGraphicsDropShadowEffect(self.camera_export)
+        self.camera_export_glow.setColor(QColor('#00cfff'))
+        self.camera_export_glow.setBlurRadius(24)
+        self.camera_export_glow.setOffset(0, 0)
+        self.camera_export_glow.setEnabled(False)
+        self.camera_export.setGraphicsEffect(self.camera_export_glow)
+        self.camera_export_flash = QTimer(self)
+        self.camera_export_flash.setInterval(650)
+        self.camera_export_flash.timeout.connect(self.flash_camera_export)
+        self.camera_export_flashes_left = 0
+        sort_controls.addWidget(self.camera_export)
         layout.addLayout(sort_controls)
         self.camera_names = QListWidget()
         self.camera_next_order = 1
@@ -1055,7 +1066,7 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.camera_log.appendPlainText(f'Could not load camera settings: {exc}')
         add.clicked.connect(self.add_camera_name)
-        export.clicked.connect(self.export_camera_names)
+        self.camera_export.clicked.connect(self.export_camera_names)
         self.camera_alphabetical.toggled.connect(self.camera_alphabetical_changed)
         self.camera_names.itemChanged.connect(self.camera_name_changed)
         self.camera_entry.returnPressed.connect(self.add_camera_name)
@@ -1084,6 +1095,37 @@ class MainWindow(QMainWindow):
                                       encoding='utf-8')
         except OSError as exc:
             QMessageBox.warning(self, 'Export usernames', f'Could not export usernames: {exc}')
+        else:
+            self.clear_camera_export_reminder()
+
+    def flash_camera_export(self):
+        highlighted = not self.camera_export.property('exportHighlight')
+        self.camera_export.setProperty('exportHighlight', highlighted)
+        self.camera_export_glow.setEnabled(highlighted)
+        self.camera_export.style().unpolish(self.camera_export)
+        self.camera_export.style().polish(self.camera_export)
+        self.camera_export.update()
+        self.camera_export_flashes_left -= 1
+        if self.camera_export_flashes_left <= 0:
+            self.camera_export_flash.stop()
+
+    def remind_camera_export(self):
+        self.camera_export.setToolTip('New usernames have been added. Export to text to save an updated list.')
+        self.camera_export_flash.stop()
+        self.camera_export.setProperty('exportHighlight', False)
+        self.camera_export_glow.setEnabled(False)
+        self.camera_export_flashes_left = 2
+        self.flash_camera_export()
+        self.camera_export_flash.start()
+
+    def clear_camera_export_reminder(self):
+        self.camera_export_flash.stop()
+        self.camera_export.setProperty('exportHighlight', False)
+        self.camera_export_glow.setEnabled(False)
+        self.camera_export.style().unpolish(self.camera_export)
+        self.camera_export.style().polish(self.camera_export)
+        self.camera_export.update()
+        self.camera_export.setToolTip('Export the camera usernames to a text file.')
 
     def sort_camera_names(self, alphabetical):
         items = [self.camera_names.takeItem(0) for _ in range(self.camera_names.count())]
@@ -1144,6 +1186,7 @@ class MainWindow(QMainWindow):
             self.camera_names.scrollToItem(item)
             self.camera_entry.clear()
             self.update_camera_names()
+            self.remind_camera_export()
 
     def remove_camera_name(self):
         items = self.camera_names.selectedItems()

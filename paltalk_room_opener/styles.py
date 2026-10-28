@@ -54,6 +54,9 @@ APP_STYLE = """
     QPushButton#autoOpenButton { background: #168ac5; }
     QPushButton#cameraAlphabetical { background: #168ac5; }
     QPushButton#cameraAlphabetical:checked { background: #075b8c; }
+    QPushButton[exportHighlight="true"] {
+        background: #00bfff; color: white; border: 2px solid #a7edff;
+    }
     QPushButton#regularModeButton:checked, QPushButton#vipModeButton:checked {
         background: #075b8c;
     }

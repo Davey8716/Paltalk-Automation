@@ -1077,6 +1077,8 @@ class MainWindow(QMainWindow):
         self.camera_names.setObjectName('cameraNames')
         self.camera_names.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.camera_names.customContextMenuRequested.connect(self.camera_name_menu)
+        self.camera_names.deleteRequested.connect(self.remove_camera_name)
+        self.camera_names.setToolTip('Drag to select usernames. Use Ctrl or Shift to select more, then press Delete or Remove selected.')
         self.camera_names_scroll = QScrollArea()
         self.camera_names_scroll.setWidgetResizable(True)
         self.camera_names_scroll.setWidget(self.camera_names)
@@ -1340,26 +1342,34 @@ class MainWindow(QMainWindow):
     def remove_camera_name(self):
         items = self.camera_names.selectedItems()
         if items:
-            self.delete_camera_name(items[0])
+            self.delete_camera_names(items)
 
     def camera_name_menu(self, position):
         item = self.camera_names.itemAt(position)
         if item is None:
             return
         menu = QMenu(self.camera_names)
-        delete_action = menu.addAction('Delete username')
+        items = self.camera_names.selectedItems() if item.isSelected() else [item]
+        delete_action = menu.addAction('Delete selected usernames' if len(items) > 1 else 'Delete username')
         if menu.exec(self.camera_names.viewport().mapToGlobal(position)) == delete_action:
-            self.delete_camera_name(item)
+            self.delete_camera_names(items)
 
     def delete_camera_name(self, item):
-        row = self.camera_names.row(item)
+        MainWindow.delete_camera_names(self, [item])
+
+    def delete_camera_names(self, items):
+        rows = sorted(self.camera_names.row(item) for item in items if self.camera_names.row(item) >= 0)
+        if not rows:
+            return
         old_numbers = [(self.camera_names.item(i), self.camera_names.item(i).data(Qt.ItemDataRole.UserRole))
                        for i in range(self.camera_names.count())]
         old_next_order = self.camera_next_order
-        removed = self.camera_names.takeItem(row)
+        removed = [(row, self.camera_names.takeItem(row)) for row in reversed(rows)]
         self.renumber_camera_names()
         if not self.save_camera_settings():
-            self.camera_names.insertItem(row, removed)
+            for row, item in reversed(removed):
+                self.camera_names.insertItem(row, item)
+                item.setSelected(True)
             signals_blocked = self.camera_names.blockSignals(True)
             try:
                 for original_item, number in old_numbers:

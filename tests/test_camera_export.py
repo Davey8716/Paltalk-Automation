@@ -103,6 +103,24 @@ class CameraExportTests(unittest.TestCase):
         self.assertEqual(window.camera_next_order, 4)
         window.remind_camera_export.assert_not_called()
 
+    def test_bulk_deletion_and_failed_save_restore_display_order(self):
+        for saved in (True, False):
+            with self.subTest(saved=saved):
+                window = self.window(['Charlie', 'Alice', 'Bob', 'Dave'])
+                for i, number in enumerate((3, 1, 2, 4)):
+                    window.camera_names.item(i).setData(Qt.ItemDataRole.UserRole, number)
+                window.camera_next_order = 5
+                window.camera_worker = None
+                window.save_camera_settings = Mock(return_value=saved)
+                window.renumber_camera_names = lambda: MainWindow.renumber_camera_names(window)
+                MainWindow.delete_camera_names(window, [window.camera_names.item(0), window.camera_names.item(2)])
+                expected = ['Alice', 'Dave'] if saved else ['Charlie', 'Alice', 'Bob', 'Dave']
+                self.assertEqual([window.camera_names.item(i).text() for i in range(window.camera_names.count())], expected)
+                numbers = [window.camera_names.item(i).data(Qt.ItemDataRole.UserRole)
+                           for i in range(window.camera_names.count())]
+                self.assertEqual(numbers, [1, 2] if saved else [3, 1, 2, 4])
+                window.save_camera_settings.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

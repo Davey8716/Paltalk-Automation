@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, Qt, QTimer
-from PySide6.QtGui import QDrag
+from PySide6.QtCore import QMimeData, Qt, QTimer, QUrl
+from PySide6.QtGui import QDesktopServices, QDrag
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
@@ -145,6 +145,7 @@ class MainWindow(QMainWindow):
         settings_menu = QMenu(menu_button)
         self.start_in_tray = settings_menu.addAction('Start in tray')
         self.start_in_tray.setCheckable(True)
+        settings_menu.addAction('Open settings folder', self.open_settings_folder)
         menu_button.setMenu(settings_menu)
         tabs.setCornerWidget(menu_button, Qt.Corner.TopRightCorner)
         page = QWidget()
@@ -315,6 +316,14 @@ class MainWindow(QMainWindow):
         rooms.itemDoubleClicked.connect(copy_item)
         layout.addWidget(copy_button)
         dialog.exec()
+
+    def open_settings_folder(self):
+        try:
+            settings.APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(settings.APP_DATA_DIR))):
+                raise OSError('Windows could not open the folder.')
+        except OSError as exc:
+            QMessageBox.warning(self, 'Settings folder', f'Could not open settings folder: {exc}')
 
     def setup_tray(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():

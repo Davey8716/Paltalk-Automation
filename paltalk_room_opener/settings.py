@@ -5,12 +5,39 @@ import os
 from pathlib import Path
 
 
-APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "PaltalkRoomOpener"
+APP_DATA_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "PaltalkRoomOpener"
+LEGACY_DATA_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "PaltalkRoomOpener"
 SETTINGS_PATH = APP_DATA_DIR / "room_names.json"
 CAMERA_SETTINGS_PATH = APP_DATA_DIR / "camera_names.json"
 ADMIN_SETTINGS_PATH = APP_DATA_DIR / "admin_actions.json"
 APP_STATE_PATH = APP_DATA_DIR / "app_state.json"
 RECENT_ROOMS_PATH = APP_DATA_DIR / "recent_rooms.json"
+
+
+def migrate_legacy_settings():
+    """Copy missing legacy settings once, leaving existing local files untouched."""
+    marker = APP_DATA_DIR / '.roaming-migration-complete'
+    if marker.exists():
+        return
+    APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for name in ('room_names.json', 'camera_names.json', 'admin_actions.json',
+                 'app_state.json', 'recent_rooms.json'):
+        source = LEGACY_DATA_DIR / name
+        target = APP_DATA_DIR / name
+        if target.exists() or not source.is_file():
+            continue
+        data = source.read_bytes()
+        try:
+            output = target.open('xb')
+        except FileExistsError:
+            continue
+        try:
+            with output:
+                output.write(data)
+        except OSError:
+            target.unlink(missing_ok=True)
+            raise
+    marker.touch()
 
 
 def load_recent_rooms():

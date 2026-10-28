@@ -25,6 +25,7 @@ use_project_environment()
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from paltalk_room_opener.main_window import MainWindow
+from paltalk_room_opener import settings
 from paltalk_room_opener.single_instance import SingleInstance
 
 
@@ -35,6 +36,11 @@ def main():
         if instance.already_running:
             QMessageBox.information(None, 'Paltalk Automation', 'Paltalk Automation is already running.')
             return 0
+        try:
+            settings.migrate_legacy_settings()
+        except OSError as exc:
+            QMessageBox.warning(None, 'Paltalk Automation', f'Could not migrate saved settings: {exc}')
+            return 1
         window = MainWindow()
         if not window.start_in_tray.isChecked() or window.tray_icon is None:
             window.show()

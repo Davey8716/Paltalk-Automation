@@ -16,7 +16,7 @@ Install the 64-bit CPython 3.14 release, then in PowerShell from this folder run
 
 The 3.14 interpreter is required because this project depends on binary packages for Qt, image capture, process inspection, and .NET UI Automation. The specified package versions ship Python 3.14-compatible Windows wheels. If `main.py` is launched with a different Python that lacks `pythonnet`, it will use the project's `.venv` automatically when that environment exists.
 
-The selected tab is restored on startup and stored in `%APPDATA%\PaltalkRoomOpener\app_state.json`.
+The selected tab is restored on startup and stored in `%LOCALAPPDATA%\PaltalkRoomOpener\app_state.json`.
 
 ## Use
 
@@ -37,11 +37,11 @@ Use the **Open** or **Close** button beside a room name to manage that room on i
 
 The delay between rooms is at least five seconds to give rooms time to load. Previously saved delays below five seconds are raised to five seconds.
 
-Room names and the delay are stored in `%APPDATA%\PaltalkRoomOpener\room_names.json` (under the current user's profile). The app finds Paltalk windows by process name, searches for exactly named UI Automation buttons, and invokes a matching button only when it is onscreen and has positive width. A successful invocation means the button was invoked; it does not independently verify that the room joined. If a room is not found, the app logs the failure and continues with the next room. Paltalk's layout, permissions, and navigation may affect which tiles are visible; return to the Rooms view if necessary.
+Room names and the delay are stored in `%LOCALAPPDATA%\PaltalkRoomOpener\room_names.json` (under the current user's profile). The app finds Paltalk windows by process name, searches for exactly named UI Automation buttons, and invokes a matching button only when it is onscreen and has positive width. A successful invocation means the button was invoked; it does not independently verify that the room joined. If a room is not found, the app logs the failure and continues with the next room. Paltalk's layout, permissions, and navigation may affect which tiles are visible; return to the Rooms view if necessary.
 
 ## Camera Opener
 
-Enter up to 200 exact usernames on the Camera Opener tab and add them to the list. Double-click an entry to edit it. Additions, edits and removals are saved and take effect during monitoring; newly added names are checked on the next scan. Start monitoring manually, or enable **Start when Paltalk starts**. Camera settings are stored separately in `%APPDATA%\PaltalkRoomOpener\camera_names.json`.
+Enter up to 200 exact usernames on the Camera Opener tab and add them to the list. Double-click an entry to edit it. Additions, edits and removals are saved and take effect during monitoring; newly added names are checked on the next scan. Start monitoring manually, or enable **Start when Paltalk starts**. Camera settings are stored separately in `%LOCALAPPDATA%\PaltalkRoomOpener\camera_names.json`.
 
 Display a room with its Mic Queue or On Cam heading and member rows visible and unobscured. The watcher uses Windows OCR to read both visible sections and UI Automation to invoke the camera button beside a matching name. It checks the row again before invoking and skips uncertain matches. It does not scroll or monitor rooms that are not displayed. OCR errors can prevent a match, particularly for similar letters; the log reports names it cannot find. The current Paltalk blue camera and green open-view icons are used to distinguish the states, so theme or interface changes can affect detection. An invocation does not itself confirm that the video opened. Stop monitoring before manually rearranging windows if the list cannot remain unobscured.
 
@@ -53,6 +53,6 @@ The watcher waits a quarter of a second between scans. Each scan also takes time
 
 ## Admin Actions
 
-Add banned phrases on the **Admin Actions** tab. Double-click a phrase or select it and click **Edit selected** to change it; select a phrase and click **Remove selected** to remove it and immediately save the list. Click **Save phrases** to keep additions and edits. The list is stored in `%APPDATA%\PaltalkRoomOpener\admin_actions.json` and supports emoji. Empty and duplicate phrases are rejected.
+Add banned phrases on the **Admin Actions** tab. Double-click a phrase or select it and click **Edit selected** to change it; select a phrase and click **Remove selected** to remove it and immediately save the list. Click **Save phrases** to keep additions and edits. The list is stored in `%LOCALAPPDATA%\PaltalkRoomOpener\admin_actions.json` and supports emoji. Empty and duplicate phrases are rejected.
 
 With a room displayed in Paltalk, click **Start reading chat** to show readable messages and their senders in the log, then **Stop reading chat** to stop. It includes currently loaded messages and follows the selected room. In **Review mode**, new messages containing a saved phrase, matched without regard to case, appear in the match log for inspection; no users are bounced. Existing messages are ignored for matching when reading starts or the selected room changes. Saved phrase changes apply while the reader is running. The selected room is identified by its UI ID because its name is not exposed by the inspected controls. Messages with an uncertain sender are omitted. The reader polls, so messages that appear and disappear between readings may be missed.

@@ -73,6 +73,33 @@ class CameraExportTests(unittest.TestCase):
         self.assertIn('access denied', warning.call_args.args[2])
         window.clear_camera_export_reminder.assert_not_called()
 
+    def test_deleting_middle_name_renumbers_in_original_order(self):
+        window = self.window(['Charlie', 'Alice', 'Bob'])
+        for i, number in enumerate((3, 1, 2)):
+            window.camera_names.item(i).setData(Qt.ItemDataRole.UserRole, number)
+        window.camera_next_order = 4
+        window.camera_worker = None
+        window.save_camera_settings = Mock(return_value=True)
+        window.renumber_camera_names = lambda: MainWindow.renumber_camera_names(window)
+        MainWindow.delete_camera_name(window, window.camera_names.item(2))
+        self.assertEqual([window.camera_names.item(i).data(Qt.ItemDataRole.UserRole)
+                          for i in range(2)], [2, 1])
+        self.assertEqual(window.camera_next_order, 3)
+        window.save_camera_settings.assert_called_once()
+
+    def test_failed_deletion_restores_numbers(self):
+        window = self.window(['Alice', 'Bob', 'Charlie'])
+        for i in range(3):
+            window.camera_names.item(i).setData(Qt.ItemDataRole.UserRole, i + 1)
+        window.camera_next_order = 4
+        window.camera_worker = None
+        window.save_camera_settings = Mock(return_value=False)
+        window.renumber_camera_names = lambda: MainWindow.renumber_camera_names(window)
+        MainWindow.delete_camera_name(window, window.camera_names.item(1))
+        self.assertEqual([window.camera_names.item(i).data(Qt.ItemDataRole.UserRole)
+                          for i in range(3)], [1, 2, 3])
+        self.assertEqual(window.camera_next_order, 4)
+
 
 if __name__ == '__main__':
     unittest.main()

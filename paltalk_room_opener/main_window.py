@@ -1056,9 +1056,7 @@ class MainWindow(QMainWindow):
                     number = numbers[index] if valid_numbers else index + 1
                     item.setData(Qt.ItemDataRole.UserRole, number)
                     self.camera_next_order = max(self.camera_next_order, number + 1)
-                next_number = data.get('next_username_number')
-                if type(next_number) is int:
-                    self.camera_next_order = max(self.camera_next_order, next_number)
+                self.renumber_camera_names()
             self.camera_auto.setChecked(bool(data.get('start_on_paltalk', False)))
             self.camera_alphabetical.setChecked(bool(data.get('alphabetical', False)))
             if self.camera_alphabetical.isChecked():
@@ -1078,6 +1076,17 @@ class MainWindow(QMainWindow):
     def camera_username_list(self):
         items = [self.camera_names.item(i) for i in range(self.camera_names.count())]
         return [item.text().strip() for item in sorted(items, key=lambda item: item.data(Qt.ItemDataRole.UserRole))]
+
+    def renumber_camera_names(self):
+        items = sorted((self.camera_names.item(i) for i in range(self.camera_names.count())),
+                       key=lambda item: item.data(Qt.ItemDataRole.UserRole))
+        signals_blocked = self.camera_names.blockSignals(True)
+        try:
+            for number, item in enumerate(items, 1):
+                item.setData(Qt.ItemDataRole.UserRole, number)
+        finally:
+            self.camera_names.blockSignals(signals_blocked)
+        self.camera_next_order = len(items) + 1
 
     def export_camera_names(self):
         names = [(self.camera_names.item(i).data(Qt.ItemDataRole.UserRole) or i + 1,
@@ -1204,9 +1213,20 @@ class MainWindow(QMainWindow):
 
     def delete_camera_name(self, item):
         row = self.camera_names.row(item)
+        old_numbers = [(self.camera_names.item(i), self.camera_names.item(i).data(Qt.ItemDataRole.UserRole))
+                       for i in range(self.camera_names.count())]
+        old_next_order = self.camera_next_order
         removed = self.camera_names.takeItem(row)
+        self.renumber_camera_names()
         if not self.save_camera_settings():
             self.camera_names.insertItem(row, removed)
+            signals_blocked = self.camera_names.blockSignals(True)
+            try:
+                for original_item, number in old_numbers:
+                    original_item.setData(Qt.ItemDataRole.UserRole, number)
+            finally:
+                self.camera_names.blockSignals(signals_blocked)
+            self.camera_next_order = old_next_order
         elif self.camera_worker:
             self.camera_worker.update_names(self.camera_username_list())
 

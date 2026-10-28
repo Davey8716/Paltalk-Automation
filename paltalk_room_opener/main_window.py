@@ -184,6 +184,11 @@ class MainWindow(QMainWindow):
         self.delay.setMaximumWidth(580)
         form.addWidget(QLabel("Delay between rooms:"), 5, 0, 1, 2)
         form.addWidget(self.delay, 5, 2)
+        self.start_button = QPushButton("Open rooms")
+        form.addWidget(self.start_button, 5, 3)
+        self.close_all_button = QPushButton("Close all")
+        self.close_all_button.setEnabled(False)
+        form.addWidget(self.close_all_button, 5, 4, Qt.AlignmentFlag.AlignLeft)
         layout.addLayout(form)
 
         layout.addWidget(QLabel("Open Paltalk and display the My Rooms / Rooms view before starting."))
@@ -205,12 +210,8 @@ class MainWindow(QMainWindow):
         self.auto_open_button.setCheckable(True)
 
         self.save_button = QPushButton("Save settings")
-        self.start_button = QPushButton("Open rooms")
-        self.close_all_button = QPushButton("Close all")
-        self.close_all_button.setEnabled(False)
         for button in (
             self.regular_button, self.vip_button, self.auto_open_button, self.save_button,
-            self.start_button, self.close_all_button,
         ):
             buttons.addWidget(button)
         layout.addLayout(buttons)
@@ -227,10 +228,12 @@ class MainWindow(QMainWindow):
             selected_tab = app_state.get('selected_tab', 'room_opener')
             tabs.setCurrentIndex({'room_opener': 0, 'camera_opener': 1, 'admin_actions': 2}.get(selected_tab, 0))
             self.start_in_tray.setChecked(bool(app_state.get('start_in_tray', False)))
+            self.update_tray_status(self.start_in_tray.isChecked())
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f'Could not load app state: {exc}')
         tabs.currentChanged.connect(self.save_selected_tab)
         self.start_in_tray.toggled.connect(self.save_start_in_tray)
+        self.start_in_tray.toggled.connect(self.update_tray_status)
 
         self.save_button.clicked.connect(self.save_current_settings)
         self.start_button.clicked.connect(self.toggle_opening)
@@ -694,13 +697,16 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(38, 32, 38, 32)
+        self.tray_status_label = QLabel('Start in tray: Off')
+        layout.addWidget(self.tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addWidget(QLabel('Banned phrases'))
         layout.addWidget(QLabel('Add literal phrases to monitor. Double-click a phrase to edit it.'))
         self.admin_phrases = QListWidget()
+        self.admin_phrases.setObjectName('adminPhrases')
         layout.addWidget(self.admin_phrases)
         entry = QHBoxLayout()
         self.admin_phrase_entry = QLineEdit()
-        self.admin_phrase_entry.setPlaceholderText('Enter a banned phrase')
+        self.admin_phrase_entry.setPlaceholderText('Enter or paste a banned phrase, including emoji')
         add = QPushButton('Add')
         edit = QPushButton('Edit selected')
         remove = QPushButton('Remove selected')
@@ -708,7 +714,6 @@ class MainWindow(QMainWindow):
             entry.addWidget(widget)
         layout.addLayout(entry)
         save = QPushButton('Save phrases')
-        save.setFixedSize(200,35)
         layout.addWidget(save)
         layout.addWidget(QLabel('Selected room chat'))
         self.admin_chat_log = QPlainTextEdit()
@@ -717,14 +722,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.admin_chat_log)
         chat_controls = QHBoxLayout()
         self.admin_chat_start = QPushButton('Start reading chat')
-        self.admin_chat_start.setFixedSize(200,35)
         self.admin_chat_stop = QPushButton('Stop reading chat')
-        self.admin_chat_stop.setFixedSize(200,35)
         self.admin_chat_stop.setEnabled(False)
         clear = QPushButton('Clear log')
-        clear.setFixedSize(200,35)
         for button in (self.admin_chat_start, self.admin_chat_stop, clear):
             chat_controls.addWidget(button)
+        chat_controls.addStretch()
         layout.addLayout(chat_controls)
         review_label = QLabel('Review mode: new phrase matches are logged for inspection; no users are bounced.')
         review_label.setWordWrap(True)
@@ -734,7 +737,8 @@ class MainWindow(QMainWindow):
         self.admin_match_log.document().setMaximumBlockCount(2000)
         layout.addWidget(self.admin_match_log)
         clear_matches = QPushButton('Clear matches')
-        clear_matches.setFixedSize(200,35)
+        for button in (save, self.admin_chat_start, self.admin_chat_stop, clear, clear_matches):
+            button.setFixedSize(200, 35)
         layout.addWidget(clear_matches)
         tabs.addTab(page, 'Admin Actions')
         try:
@@ -939,6 +943,9 @@ class MainWindow(QMainWindow):
             settings.save_app_state(start_in_tray=enabled)
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f'Could not save app state: {exc}')
+
+    def update_tray_status(self, enabled):
+        self.tray_status_label.setText(f'Start in tray: {"On" if enabled else "Off"}')
 
     def add_camera_name(self):
         name = self.camera_entry.text().strip()

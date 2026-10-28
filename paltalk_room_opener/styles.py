@@ -39,6 +39,11 @@ APP_STYLE = """
         border: 1px solid #4b5568; border-radius: 5px;
     }
     QListWidget#cameraNames::item:selected { background: #168ac5; color: white; }
+    QListWidget#adminPhrases {
+        background: #11151c; color: white; font-weight: 700;
+        border: 1px solid #4b5568; border-radius: 5px; padding: 8px;
+    }
+    QListWidget#adminPhrases::item:selected { background: #168ac5; color: white; }
     QPushButton {
         background: #168ac5; border: none; border-radius: 5px;
         padding: 10px 18px;

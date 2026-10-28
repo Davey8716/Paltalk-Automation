@@ -1,5 +1,12 @@
 """Identify new matching chat elements after establishing a room baseline."""
 
+import unicodedata
+
+
+def normalize_phrase(text):
+    """Compare Unicode emoji regardless of their optional presentation selector."""
+    return unicodedata.normalize('NFC', text).replace('\ufe0e', '').replace('\ufe0f', '').casefold()
+
 
 class ChatMatchTracker:
     def __init__(self, phrases):
@@ -22,7 +29,8 @@ class ChatMatchTracker:
         for message in snapshot.messages:
             if message.runtime_id in self.pending:
                 for phrase in self.phrases:
-                    if phrase.casefold() in message.text.casefold():
+                    normalized = normalize_phrase(phrase)
+                    if normalized and normalized in normalize_phrase(message.text):
                         matches.append((message, phrase))
                 self.pending.discard(message.runtime_id)
         return matches

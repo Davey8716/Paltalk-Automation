@@ -9,6 +9,12 @@ def snapshot(room, messages, extra_ids=()):
 
 
 class ChatMatchTests(unittest.TestCase):
+    def test_emoji_presentation_variants_match(self):
+        tracker = ChatMatchTracker(['Hey ❤️'])
+        tracker.scan(snapshot(1, []))
+        message = ChatMessage('Alice', 'hey ❤', (1,))
+        self.assertEqual(tracker.scan(snapshot(1, [message])), [(message, 'Hey ❤️')])
+
     def test_baseline_repeated_scans_and_identical_posts(self):
         tracker = ChatMatchTracker(['Hey 👏'])
         old = ChatMessage('Alice', 'HEY 👏', (1,))

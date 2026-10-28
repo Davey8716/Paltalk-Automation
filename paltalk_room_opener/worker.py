@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
-from .automation import close_room, open_rooms, room_states, recently_visited_rooms
+from .automation import close_room, open_rooms, room_states, recently_visited_rooms, restore_paltalk
 from .camera_automation import watch_cameras
 from .chat_reader import ChatMessage, ChatSnapshot
 from .chat_matches import ChatMatchTracker
@@ -159,7 +159,18 @@ class CloseAllRoomsWorker(QThread):
         self.names = names
 
     def run(self):
+        try:
+            restore_paltalk()
+            states = room_states(self.names)
+            if states is None or any(name not in states for name in self.names):
+                self.message.emit('Could not determine open room status after restoring Paltalk.')
+                return
+        except Exception as exc:
+            self.message.emit(f'Could not restore Paltalk or check rooms: {exc}')
+            return
         for name in self.names:
+            if not states[name]:
+                continue
             try:
                 close_room(name, self.message.emit)
             except Exception as exc:

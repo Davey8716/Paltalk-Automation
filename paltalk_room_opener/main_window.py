@@ -556,7 +556,7 @@ class MainWindow(QMainWindow):
             self.set_button_enabled(button, bool(name and known and not self.worker and not self.close_room_worker))
         if hasattr(self, 'close_all_button'):
             self.set_button_enabled(self.close_all_button, bool(
-                self.room_states and any(self.room_states.get(field.text().strip()) for field in self.rooms)
+                any(field.text().strip() for field in self.rooms)
                 and not self.worker and not self.close_room_worker
             ))
 
@@ -582,11 +582,11 @@ class MainWindow(QMainWindow):
         self.close_room_worker.start()
 
     def close_all_rooms(self):
-        if self.worker or self.close_room_worker or not self.room_states:
+        if self.worker or self.close_room_worker:
             return
         names = list(dict.fromkeys(
             field.text().strip() for field in self.rooms
-            if self.room_states.get(field.text().strip())
+            if field.text().strip()
         ))
         if not names:
             return
@@ -598,7 +598,7 @@ class MainWindow(QMainWindow):
         self.close_room_worker.finished.connect(self.close_room_finished)
         self.set_button_enabled(self.start_button, False)
         self.update_room_buttons()
-        self.log.appendPlainText(f"Closing {len(names)} open room(s)...")
+        self.log.appendPlainText("Restoring Paltalk and checking configured rooms...")
         self.close_room_worker.start()
 
     def close_room_finished(self):

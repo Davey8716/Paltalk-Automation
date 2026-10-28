@@ -33,7 +33,7 @@ Use **Recently visited** while Paltalk's Rooms view is open to collect rooms fro
 
 Use the **Open** or **Close** button beside a room name to manage that room on its own. The button reflects the detected room state and the saved room name remains in the list. Opening still requires the tile to be visible in Paltalk's My Rooms / Rooms view. The activity log reports whether a control was invoked; an invocation does not independently verify the result.
 
-**Close all** closes all detected open rooms named in the five configured entries, regardless of the selected mode. Rooms not listed in the app are not included.
+**Close all** restores Paltalk if it is minimized, then closes detected open rooms named in the five configured entries, regardless of the selected mode. Rooms not listed in the app are not included.
 
 The delay between rooms is at least five seconds to give rooms time to load. Previously saved delays below five seconds are raised to five seconds.
 

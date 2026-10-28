@@ -72,15 +72,43 @@ def recently_visited_rooms():
     raise RuntimeError("Recently Visited was not found. Open Paltalk's Rooms view and try again.")
 
 
-def _close_buttons(a):
-    """Find Paltalk buttons whose automation properties identify a close action."""
+def _paltalk_windows(a):
     pids = {p.info["pid"] for p in psutil.process_iter(["pid", "name"])
             if (p.info.get("name") or "").lower() == "paltalk.exe"}
     if not pids:
-        return None
+        return []
     windows = a.AutomationElement.RootElement.FindAll(
         a.TreeScope.Children, a.PropertyCondition(a.AutomationElement.ControlTypeProperty, a.ControlType.Window))
-    windows = [window for window in windows if window.Current.ProcessId in pids]
+    return [window for window in windows if window.Current.ProcessId in pids]
+
+
+def restore_paltalk():
+    """Restore minimized Paltalk windows before inspecting their room controls."""
+    clr = import_module('clr')
+    root = Path(os.environ.get('WINDIR', r'C:\Windows')) / 'Microsoft.NET' / 'assembly' / 'GAC_MSIL'
+    for assembly in ('UIAutomationClient', 'UIAutomationTypes'):
+        paths = sorted((root / assembly).glob(f'*/{assembly}.dll'))
+        clr.AddReference(str(paths[-1]) if paths else assembly)
+    a = import_module('System.Windows.Automation')
+    windows = _paltalk_windows(a)
+    if not windows:
+        raise RuntimeError("Paltalk's window is unavailable.")
+    restored = False
+    for window in windows:
+        try:
+            pattern = window.GetCurrentPattern(a.WindowPattern.Pattern)
+            if pattern.Current.WindowVisualState == a.WindowVisualState.Minimized:
+                pattern.SetWindowVisualState(a.WindowVisualState.Normal)
+                restored = True
+        except Exception:
+            continue
+    if restored:
+        time.sleep(0.5)
+
+
+def _close_buttons(a):
+    """Find Paltalk buttons whose automation properties identify a close action."""
+    windows = _paltalk_windows(a)
     if not windows:
         return None
     buttons = []

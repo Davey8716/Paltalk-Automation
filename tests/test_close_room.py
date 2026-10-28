@@ -2,19 +2,43 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from paltalk_room_opener.automation import close_room, room_states
+from paltalk_room_opener.automation import close_room, room_states, restore_paltalk
 from paltalk_room_opener.worker import CloseAllRoomsWorker
 
 
 class CloseRoomTests(unittest.TestCase):
+    def test_restore_paltalk_restores_minimized_windows(self):
+        pattern = SimpleNamespace(Current=SimpleNamespace(WindowVisualState='minimized'),
+                                  SetWindowVisualState=unittest.mock.Mock())
+        window = SimpleNamespace(GetCurrentPattern=lambda _: pattern)
+        automation = SimpleNamespace(WindowPattern=SimpleNamespace(Pattern=1),
+                                     WindowVisualState=SimpleNamespace(Minimized='minimized', Normal='normal'))
+        with patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), automation]), \
+             patch('paltalk_room_opener.automation._paltalk_windows', return_value=[window]), \
+             patch('paltalk_room_opener.automation.time.sleep'):
+            restore_paltalk()
+        pattern.SetWindowVisualState.assert_called_once_with('normal')
+
     def test_close_all_continues_after_a_room_fails(self):
         worker = CloseAllRoomsWorker(['Alpha', 'Beta'])
         messages = []
         worker.message.connect(messages.append)
-        with patch('paltalk_room_opener.worker.close_room', side_effect=[RuntimeError('failure'), None]) as close:
+        with patch('paltalk_room_opener.worker.restore_paltalk') as restore, \
+             patch('paltalk_room_opener.worker.room_states', return_value={'Alpha': True, 'Beta': True}), \
+             patch('paltalk_room_opener.worker.close_room', side_effect=[RuntimeError('failure'), None]) as close:
             worker.run()
+        restore.assert_called_once()
         self.assertEqual([call.args[0] for call in close.call_args_list], ['Alpha', 'Beta'])
         self.assertIn('Alpha', messages[0])
+
+    def test_close_all_checks_state_after_restoring_and_skips_closed_rooms(self):
+        worker = CloseAllRoomsWorker(['Alpha', 'Beta'])
+        events = []
+        with patch('paltalk_room_opener.worker.restore_paltalk', side_effect=lambda: events.append('restore')), \
+             patch('paltalk_room_opener.worker.room_states', side_effect=lambda names: events.append('check') or {'Alpha': False, 'Beta': True}), \
+             patch('paltalk_room_opener.worker.close_room', side_effect=lambda name, log: events.append(name)):
+            worker.run()
+        self.assertEqual(events, ['restore', 'check', 'Beta'])
 
     def test_state_uses_identified_close_buttons_and_rejects_ambiguity(self):
         button = SimpleNamespace(Current=SimpleNamespace(AutomationId='Room close: The Garage'))

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from paltalk_room_opener.automation import (PaltalkWindowNotFound, _paltalk_main_window,
-                                             _wait_for_paltalk_main_window, close_room, room_states, restore_paltalk)
+                                             _wait_for_paltalk_main_window, _reopen_paltalk, close_room, room_states, restore_paltalk)
 from paltalk_room_opener.worker import CloseAllRoomsWorker
 
 
@@ -105,6 +105,54 @@ class CloseRoomTests(unittest.TestCase):
              patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123):
             restore_paltalk()
         user32.ShowWindowAsync.assert_not_called()
+
+    def test_missing_main_window_is_reopened_from_tray(self):
+        user32 = MagicMock()
+        missing = PaltalkWindowNotFound('no main window', processes=1, title_matches=0)
+        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_room_opener.automation._wait_for_paltalk_main_window', side_effect=[missing, 123]) as find, \
+             patch('paltalk_room_opener.automation._reopen_paltalk') as reopen, \
+             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123):
+            restore_paltalk()
+        reopen.assert_called_once_with()
+        self.assertEqual(find.call_count, 2)
+
+    def test_ambiguous_main_windows_do_not_click_tray(self):
+        user32 = MagicMock()
+        ambiguous = PaltalkWindowNotFound('ambiguous', processes=1, title_matches=2)
+        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_room_opener.automation._wait_for_paltalk_main_window', side_effect=ambiguous), \
+             patch('paltalk_room_opener.automation._desktop_context', return_value='test desktop'), \
+             patch('paltalk_room_opener.automation._reopen_paltalk') as reopen, \
+             self.assertRaisesRegex(PaltalkWindowNotFound, 'ambiguous'):
+            restore_paltalk()
+        reopen.assert_not_called()
+
+    def test_tray_restore_error_is_reported(self):
+        missing = PaltalkWindowNotFound('no main window', processes=1, title_matches=0)
+        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=MagicMock()), \
+             patch('paltalk_room_opener.automation._wait_for_paltalk_main_window', side_effect=missing), \
+             patch('paltalk_room_opener.automation._reopen_paltalk', side_effect=RuntimeError('executable unavailable')), \
+             self.assertRaisesRegex(RuntimeError, 'Could not reopen Paltalk: executable unavailable'):
+            restore_paltalk()
+
+    def test_reopen_uses_running_process_executable(self):
+        process = SimpleNamespace(info={'name': 'Paltalk.exe', 'exe': r'C:\Paltalk\Paltalk.exe'})
+        with patch('paltalk_room_opener.automation.psutil.process_iter', return_value=[process]), \
+             patch('paltalk_room_opener.automation.Path.is_file', return_value=True), \
+             patch('paltalk_room_opener.automation.subprocess.Popen') as launch:
+            _reopen_paltalk()
+        launch.assert_called_once_with([r'C:\Paltalk\Paltalk.exe'], cwd=r'C:\Paltalk')
+
+    def test_reopen_rejects_missing_or_ambiguous_process(self):
+        process = SimpleNamespace(info={'name': 'Paltalk.exe', 'exe': r'C:\Paltalk\Paltalk.exe'})
+        for processes in ([], [process, process]):
+            with self.subTest(processes=len(processes)), \
+                 patch('paltalk_room_opener.automation.psutil.process_iter', return_value=processes), \
+                 patch('paltalk_room_opener.automation.subprocess.Popen') as launch, \
+                 self.assertRaisesRegex(RuntimeError, 'uniquely identify'):
+                _reopen_paltalk()
+            launch.assert_not_called()
 
     def test_restore_reselects_a_recreated_window(self):
         user32 = MagicMock()

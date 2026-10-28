@@ -2,6 +2,7 @@
 
 import os
 import ctypes
+import subprocess
 import time
 from ctypes import wintypes
 from importlib import import_module
@@ -87,6 +88,11 @@ def _paltalk_windows(a):
 class PaltalkWindowNotFound(RuntimeError):
     """The Paltalk main window is unavailable or cannot be selected safely."""
 
+    def __init__(self, message, processes=0, title_matches=0):
+        super().__init__(message)
+        self.processes = processes
+        self.title_matches = title_matches
+
 
 def _paltalk_main_window(user32):
     """Find the unowned, maximizable Paltalk window, including hidden windows."""
@@ -132,7 +138,8 @@ def _paltalk_main_window(user32):
         raise PaltalkWindowNotFound(
             f"Paltalk's main window is unavailable or ambiguous "
             f"({len(pids)} Paltalk process(es); "
-            + ', '.join(f'{key}: {value}' for key, value in counts.items()) + ').' + guidance
+            + ', '.join(f'{key}: {value}' for key, value in counts.items()) + ').' + guidance,
+            processes=len(pids), title_matches=counts['title matches'],
         )
     return windows[0][0]
 
@@ -184,6 +191,18 @@ def _desktop_context(user32):
     return f'session: {session_name}, worker desktop: {worker}, input desktop: {interactive}'
 
 
+def _reopen_paltalk():
+    """Launch the running Paltalk executable to bring its existing window back."""
+    processes = [p for p in psutil.process_iter(['name', 'exe'])
+                 if (p.info.get('name') or '').lower() == 'paltalk.exe']
+    if len(processes) != 1:
+        raise RuntimeError('Could not uniquely identify the running Paltalk process.')
+    executable = processes[0].info.get('exe')
+    if not executable or not Path(executable).is_file():
+        raise RuntimeError('Could not access the running Paltalk executable.')
+    subprocess.Popen([executable], cwd=str(Path(executable).parent))
+
+
 def restore_paltalk():
     """Restore and maximize Paltalk, and verify it is ready before continuing."""
     user32 = ctypes.WinDLL('user32', use_last_error=True)
@@ -201,11 +220,18 @@ def restore_paltalk():
     try:
         hwnd = _wait_for_paltalk_main_window(user32)
     except PaltalkWindowNotFound as exc:
-        try:
-            context = _desktop_context(user32)
-        except Exception:
-            context = 'desktop context unavailable'
-        raise PaltalkWindowNotFound(f'{exc} ({context})') from exc
+        if exc.processes == 1 and exc.title_matches == 0:
+            try:
+                _reopen_paltalk()
+                hwnd = _wait_for_paltalk_main_window(user32, timeout=5.0)
+            except Exception as tray_exc:
+                raise RuntimeError(f'Could not reopen Paltalk: {tray_exc}') from tray_exc
+        else:
+            try:
+                context = _desktop_context(user32)
+            except Exception:
+                context = 'desktop context unavailable'
+            raise PaltalkWindowNotFound(f'{exc} ({context})') from exc
     deadline = time.monotonic() + 5.0
     requested = None
     while True:

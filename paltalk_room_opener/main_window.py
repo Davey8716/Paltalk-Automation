@@ -844,6 +844,7 @@ class MainWindow(QMainWindow):
             entry.addWidget(widget)
         layout.addLayout(entry)
         save = QPushButton('Save phrases')
+        save.setFixedSize(150,35)
         layout.addWidget(save)
         layout.addWidget(QLabel('Selected room chat'))
         self.admin_chat_log = QPlainTextEdit()
@@ -867,8 +868,9 @@ class MainWindow(QMainWindow):
         self.admin_match_log.document().setMaximumBlockCount(2000)
         layout.addWidget(self.admin_match_log)
         clear_matches = QPushButton('Clear matches')
-        for button in (save, self.admin_chat_start, self.admin_chat_stop, clear, clear_matches):
-            button.setFixedSize(200, 35)
+        clear_matches.setFixedSize(150,35)
+        for button in (self.admin_chat_start, self.admin_chat_stop, clear):
+            button.setFixedSize(180, 35)
         layout.addWidget(clear_matches)
         tabs.addTab(page, 'Admin Actions')
         try:
@@ -1001,6 +1003,8 @@ class MainWindow(QMainWindow):
         for button in (self.camera_auto, self.camera_start, self.camera_stop):
             button.setFixedSize(200, 35)
             controls.addWidget(button)
+        self.camera_start.setFixedSize(150, 35)
+        self.camera_stop.setFixedSize(150, 35)
         controls.addStretch()
         layout.addLayout(controls)
         output = QHBoxLayout()

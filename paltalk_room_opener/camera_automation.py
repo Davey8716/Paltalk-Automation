@@ -89,11 +89,11 @@ def _normal(value):
 
 
 def _badge_boxes(image, left, top, right, bottom):
-    """Find compact colored badges and filled grey administrator circles."""
+    """Find compact colored, grey and outlined badges beside usernames."""
     crop = image.crop((left, top, right, bottom)).convert('RGB')
     width, height = crop.size
     pixels = crop.load()
-    colored, grey = set(), set()
+    colored, grey, pale = set(), set(), set()
     for y in range(height):
         for x in range(width):
             r, g, b = pixels[x, y]
@@ -101,8 +101,10 @@ def _badge_boxes(image, left, top, right, bottom):
                 colored.add((x, y))
             elif 65 <= min(r, g, b) and max(r, g, b) <= 190 and max(r, g, b) - min(r, g, b) <= 18:
                 grey.add((x, y))
+            elif 190 < min(r, g, b) and max(r, g, b) <= 230 and max(r, g, b) - min(r, g, b) <= 18:
+                pale.add((x, y))
     boxes = []
-    for pixels_to_check, is_grey in ((colored, False), (grey, True)):
+    for pixels_to_check, kind in ((colored, 'colored'), (grey, 'grey'), (pale, 'pale')):
         while pixels_to_check:
             point = pixels_to_check.pop()
             stack = [point]
@@ -119,8 +121,14 @@ def _badge_boxes(image, left, top, right, bottom):
             xs, ys = zip(*component)
             x0, x1, y0, y1 = min(xs), max(xs) + 1, min(ys), max(ys) + 1
             w, h = x1 - x0, y1 - y0
-            compact_grey = not is_grey or (w <= 20 and h <= 20 and .75 <= w / h <= 1.25)
-            if w >= 8 and h >= 8 and compact_grey and len(component) >= 45 and len(component) / (w * h) >= .4:
+            compact = kind == 'colored' or (w <= 20 and h <= 20 and .75 <= w / h <= 1.25)
+            # Outlined icons have a thinner connected border than filled badges.
+            points = set(component)
+            border = sum((x, y) in points for x in range(x0 + 2, x1 - 2) for y in (y0, y1 - 1))
+            outlined = (kind != 'colored' and w >= 12 and h >= 12 and len(component) >= 35
+                        and len(component) / (w * h) >= .18 and border >= w)
+            filled = kind != 'pale' and len(component) >= 45 and len(component) / (w * h) >= .4
+            if w >= 8 and h >= 8 and compact and (outlined or filled):
                 boxes.append((left + x0, top + y0, left + x1, top + y1))
     return sorted(boxes)
 
@@ -196,6 +204,13 @@ def _readings(row):
     return (row[0],) if isinstance(row[0], str) else row[0]
 
 
+def _camera_error_message(exc):
+    message = str(exc).strip()
+    if 'MS.Internal.Automation.UiaCoreApi' in message or '0x80004005' in message:
+        return 'Paltalk controls are temporarily unavailable. Retrying.'
+    return message.splitlines()[0].strip() if message else type(exc).__name__
+
+
 def _match_rows(rows, names, target):
     """Return matching rows and whether any row also names another saved user."""
     configured = {_normal(name) for name in names}
@@ -231,15 +246,22 @@ class CameraScanner:
                 if (p.info.get('name') or '').lower() == 'paltalk.exe'}
         if not pids:
             raise RuntimeError('Paltalk is not running.')
-        windows = a.AutomationElement.RootElement.FindAll(a.TreeScope.Children, a.Condition.TrueCondition)
+        int32 = import_module('System').Int32
+        windows = []
+        for pid in pids:
+            condition = a.AndCondition(
+                a.PropertyCondition(a.AutomationElement.ProcessIdProperty, int32(pid)),
+                a.PropertyCondition(a.AutomationElement.ClassNameProperty, 'qtctrl::WindowContainer'),
+            )
+            windows.extend(a.AutomationElement.RootElement.FindAll(a.TreeScope.Children, condition))
         lists = []
         for window in windows:
-            if window.Current.ProcessId not in pids or window.Current.ClassName != 'qtctrl::WindowContainer':
-                continue
-            elements = window.FindAll(a.TreeScope.Descendants, a.Condition.TrueCondition)
+            elements = window.FindAll(a.TreeScope.Descendants,
+                a.PropertyCondition(a.AutomationElement.ClassNameProperty,
+                                    'ui::rooms::member_list::RoomMemberListWidget'))
             for element in elements:
                 c = element.Current
-                if c.ClassName == 'ui::rooms::member_list::RoomMemberListWidget' and not c.IsOffscreen:
+                if not c.IsOffscreen:
                     rect = c.BoundingRectangle
                     if rect.Width > 0 and rect.Height > 0:
                         lists.append(element)
@@ -260,7 +282,8 @@ class CameraScanner:
                           for label, start, end in sections for line in lines
                           if start < (line['top'] + line['bottom']) / 2 < end]
         buttons = []
-        for e in member_list.FindAll(a.TreeScope.Descendants, a.Condition.TrueCondition):
+        for e in member_list.FindAll(a.TreeScope.Descendants,
+                a.PropertyCondition(a.AutomationElement.ControlTypeProperty, a.ControlType.Button)):
             c = e.Current
             if c.ControlType != a.ControlType.Button or c.IsOffscreen or 'MemberContentWidget' not in c.AutomationId:
                 continue
@@ -360,6 +383,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
     reported = {}
     diagnostic_reported = False
     while not stopped():
+        retry_delay = .25
         try:
             if current_names is not None:
                 names = list(dict.fromkeys(name.strip() for name in current_names() if name.strip()))
@@ -411,7 +435,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                 if status != 'available':
                     continue
                 key = _normal(name)
-                if time.monotonic() - attempts.get(key, 0) < 10:
+                if time.monotonic() - attempts.get(key, 0) < 2:
                     continue
                 attempts[key] = time.monotonic()
                 def name_removed():
@@ -428,12 +452,13 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
         except _ScanStopped:
             break
         except Exception as exc:
-            message = str(exc)
+            message = _camera_error_message(exc)
             if message != last_error:
                 log(f'Camera watcher: {message}')
                 last_error = message
+            retry_delay = 1
         progress('waiting for the next scan')
-        for _ in range(5):
+        for _ in range(round(retry_delay / .05)):
             if stopped():
                 break
             time.sleep(.05)

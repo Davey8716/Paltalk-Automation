@@ -49,7 +49,7 @@ The watcher checks three OCR readings and attempts to remove colored badges besi
 
 After invoking a camera, the watcher waits one second before opening another. Stop interrupts that wait and cancels an OCR process in progress.
 
-The watcher waits a quarter of a second between scans. Each scan also takes time to read the visible list, so the actual interval varies. A camera that has already been attempted is not attempted again for at least ten seconds.
+The watcher waits a quarter of a second between scans. Each scan also takes time to read the visible list, so the actual interval varies. A camera that has already been attempted is not attempted again for at least two seconds.
 
 ## Admin Actions
 

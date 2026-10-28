@@ -9,12 +9,17 @@ from PIL import Image, ImageDraw
 
 from paltalk_room_opener import settings
 from paltalk_room_opener.camera_automation import (
-    CameraScanner, _badge_boxes, _button_section, _camera_state, _match_rows, _normal,
+    CameraScanner, _badge_boxes, _button_section, _camera_error_message, _camera_state, _match_rows, _normal,
     _ocr, _row_text, _row_words, _section_words, _sections, _ScanStopped, watch_cameras,
 )
 
 
 class CameraTests(unittest.TestCase):
+    def test_automation_errors_are_reported_without_dotnet_stack_trace(self):
+        error = RuntimeError('Unrecognized error.\n   at MS.Internal.Automation.UiaCoreApi.CheckError(Int32 hr)')
+        self.assertEqual(_camera_error_message(error), 'Paltalk controls are temporarily unavailable. Retrying.')
+        self.assertEqual(_camera_error_message(RuntimeError('Windows OCR timed out.')), 'Windows OCR timed out.')
+
     def test_room_mode_save_preserves_other_saved_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -87,6 +92,18 @@ class CameraTests(unittest.TestCase):
         words = [{'text': 'andrew777a', 'left': 5, 'right': 78},
                  {'text': 'O', 'left': 83, 'right': 94}]
         self.assertEqual(_row_text(words, boxes[0][0]), 'andrew777a')
+
+    def test_outlined_badge_and_colored_badges_are_detected(self):
+        image = Image.new('RGB', (200, 24), 'white')
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((80, 4, 94, 19), outline=(150, 150, 150), width=2)
+        draw.rectangle((110, 5, 124, 18), fill=(255, 165, 0))
+        draw.polygon([(140, 5), (154, 5), (154, 14), (147, 19), (140, 14)], fill=(0, 150, 220))
+        boxes = _badge_boxes(image, 0, 0, 190, 24)
+        self.assertEqual([box[0] for box in boxes], [80, 110, 140])
+        words = [{'text': 'andrew_vanart', 'left': 2, 'right': 76},
+                 {'text': 'O', 'left': 82, 'right': 92}]
+        self.assertEqual(_row_text(words, boxes[0][0]), 'andrew_vanart')
 
     def test_exact_readings_match_saved_names(self):
         rows = [

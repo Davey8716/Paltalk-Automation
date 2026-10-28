@@ -115,6 +115,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Paltalk Automation")
+        self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, False)
         screen = QApplication.primaryScreen()
         available = screen.availableGeometry() if screen else None
         self.resize(1000,

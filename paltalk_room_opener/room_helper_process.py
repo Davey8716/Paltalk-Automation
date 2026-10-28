@@ -3,7 +3,7 @@
 import json
 import sys
 
-from .automation import open_rooms, restore_paltalk, room_states
+from .automation import open_rooms, restore_paltalk, room_states, recently_visited_rooms
 
 
 def send(kind, value):
@@ -17,6 +17,11 @@ def main():
     names = json.loads(names_json)
     stage = 'room-state scan'
     try:
+        if action in ('recent', 'recent_background'):
+            stage = 'reading recently visited rooms'
+            send('stage', stage)
+            send('result', recently_visited_rooms(expand=action == 'recent'))
+            return
         if action in ('single', 'automatic'):
             stage = 'restoring Paltalk'
             send('stage', stage)

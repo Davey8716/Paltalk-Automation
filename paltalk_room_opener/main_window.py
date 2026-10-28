@@ -121,6 +121,7 @@ class MainWindow(QMainWindow):
         self.paltalk_process_worker = None
         self._pending_single_start = False
         self.recent_rooms_worker = None
+        self.recent_rooms_manual_pending = False
         self.room_states = None
         self.camera_worker = None
         self.chat_reader_worker = None
@@ -262,27 +263,56 @@ class MainWindow(QMainWindow):
         self.room_state_timer.timeout.connect(self.refresh_room_states)
         self.room_state_timer.start()
         self.refresh_room_states()
+        self.recent_rooms_timer = QTimer(self)
+        self.recent_rooms_timer.setInterval(10000)
+        self.recent_rooms_timer.timeout.connect(self.refresh_recent_rooms)
+        self.recent_rooms_timer.start()
         self.setup_tray()
 
     def show_recent_rooms(self):
         if self.recent_rooms_worker:
+            if self.recent_rooms_worker.automatic:
+                self.recent_rooms_manual_pending = True
+                self.recent_rooms_button.setEnabled(False)
             return
         self.log.setFocus(Qt.FocusReason.OtherFocusReason)
         self.recent_rooms_button.setEnabled(False)
-        self.recent_rooms_worker = RecentRoomsWorker()
+        self.start_recent_rooms_scan(automatic=False)
+
+    def refresh_recent_rooms(self):
+        if (self._quitting or not self.paltalk_was_running or self.recent_rooms_worker
+                or self.worker or self.close_room_worker or self.room_state_worker):
+            return
+        self.start_recent_rooms_scan(automatic=True)
+
+    def start_recent_rooms_scan(self, automatic):
+        self.recent_rooms_worker = RecentRoomsWorker(automatic=automatic)
         self.recent_rooms_worker.result.connect(self.recent_rooms_received)
         self.recent_rooms_worker.finished.connect(self.recent_rooms_finished)
         self.recent_rooms_worker.start()
 
     def recent_rooms_finished(self):
         self.recent_rooms_worker = None
+        if self.recent_rooms_manual_pending and not self._quitting:
+            self.recent_rooms_manual_pending = False
+            self.start_recent_rooms_scan(automatic=False)
+            return
         self.recent_rooms_button.setEnabled(True)
 
     def recent_rooms_received(self, names, error):
+        automatic = self.recent_rooms_worker and self.recent_rooms_worker.automatic
+        if automatic:
+            if not error and names:
+                try:
+                    settings.merge_recent_rooms(names)
+                except (OSError, ValueError, TypeError) as exc:
+                    self.log.appendPlainText(f'Could not save recently visited rooms: {exc}')
+            return
         try:
             names = settings.load_recent_rooms() if error else settings.merge_recent_rooms(names)
         except (OSError, ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Recently visited", f"Could not read or save recent rooms: {exc}")
+            return
         if error and not names:
             QMessageBox.warning(self, "Recently visited", error)
         dialog = QDialog(self)
@@ -549,6 +579,7 @@ class MainWindow(QMainWindow):
 
     def refresh_room_states(self):
         if (self.room_state_worker or self._quitting or self.close_room_worker or
+                getattr(self, 'recent_rooms_worker', None) or
                 (self.worker and (getattr(self.worker, 'check_existing', False) or getattr(self.worker, 'automatic', False)))):
             return
         self.room_state_worker = RoomStateWorker([field.text().strip() for field in self.rooms])
@@ -715,6 +746,7 @@ class MainWindow(QMainWindow):
         if self.room_state_worker and self.room_state_worker.isRunning():
             running = True
         if self.recent_rooms_worker and self.recent_rooms_worker.isRunning():
+            self.recent_rooms_worker.requestInterruption()
             running = True
         if self.paltalk_process_worker and self.paltalk_process_worker.isRunning():
             running = True

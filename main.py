@@ -38,6 +38,7 @@ def main():
             return 0
         try:
             settings.migrate_legacy_settings()
+            settings.migrate_recent_history()
         except OSError as exc:
             QMessageBox.warning(None, 'Paltalk Automation', f'Could not migrate saved settings: {exc}')
             return 1

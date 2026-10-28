@@ -11,7 +11,7 @@ from pathlib import Path
 import psutil
 from PySide6.QtCore import QThread, Signal
 
-from .automation import close_room, open_rooms, room_states, recently_visited_rooms, restore_paltalk, is_paltalk_running
+from .automation import close_room, open_rooms, room_states, restore_paltalk, is_paltalk_running
 from .chat_reader import ChatMessage, ChatSnapshot
 from .chat_matches import ChatMatchTracker
 from .settings import load_admin_phrases
@@ -299,11 +299,19 @@ class RoomStateWorker(QThread):
 class RecentRoomsWorker(QThread):
     result = Signal(object, str)
 
+    def __init__(self, automatic=False):
+        super().__init__()
+        self.automatic = automatic
+
     def run(self):
         try:
-            self.result.emit(recently_visited_rooms(), "")
+            names = run_room_helper('recent_background' if self.automatic else 'recent', [],
+                                    self.isInterruptionRequested, timeout=10)
+            if not self.isInterruptionRequested():
+                self.result.emit(names, "")
         except Exception as exc:
-            self.result.emit([], str(exc))
+            if not self.isInterruptionRequested():
+                self.result.emit([], str(exc))
 
 
 class CameraWorker(QThread):

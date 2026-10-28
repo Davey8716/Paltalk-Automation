@@ -37,6 +37,20 @@ class SettingsMigrationTests(unittest.TestCase):
                     settings.migrate_legacy_settings()
             self.assertFalse((new / '.roaming-migration-complete').exists())
 
+    def test_recent_history_is_copied_to_new_name_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old = root / 'recent_rooms.json'
+            new = root / 'recently visited.json'
+            old.write_text('["Alpha"]', encoding='utf-8')
+            with patch.object(settings, 'APP_DATA_DIR', root), patch.object(settings, 'RECENT_ROOMS_PATH', new):
+                settings.migrate_recent_history()
+                self.assertEqual(new.read_text(encoding='utf-8'), '["Alpha"]')
+                self.assertTrue(old.exists())
+                new.write_text('["Beta"]', encoding='utf-8')
+                settings.migrate_recent_history()
+                self.assertEqual(new.read_text(encoding='utf-8'), '["Beta"]')
+
 
 if __name__ == '__main__':
     unittest.main()

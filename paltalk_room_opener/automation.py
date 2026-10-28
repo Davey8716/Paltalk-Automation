@@ -19,7 +19,44 @@ def is_paltalk_running():
     )
 
 
-def recently_visited_rooms():
+def _recent_tiles(a, children, header):
+    """Read tiles positioned below this header and above the next section."""
+    headers, tiles = [], []
+    for child in children:
+        class_name = child.Current.ClassName
+        if class_name == 'ui::rooms::ClosableListWidget':
+            headers.append(child)
+        elif class_name == 'ui::rooms::RoomTiles':
+            tiles.append(child)
+        else:
+            for kind, target in (('ui::rooms::ClosableListWidget', headers),
+                                 ('ui::rooms::RoomTiles', tiles)):
+                target.extend(child.FindAll(a.TreeScope.Descendants,
+                    a.PropertyCondition(a.AutomationElement.ClassNameProperty, kind)))
+    rect = header.Current.BoundingRectangle
+    if rect.Width <= 0 or rect.Height <= 0:
+        raise RuntimeError('Recently Visited header has invalid screen bounds.')
+    top = rect.Y + rect.Height
+    lower_headers = [item.Current.BoundingRectangle.Y for item in headers
+                     if item.Current.BoundingRectangle.Height > 0
+                     and item.Current.BoundingRectangle.Y >= top]
+    bottom = min(lower_headers, default=float('inf'))
+    positioned = []
+    for tile in tiles:
+        current = tile.Current
+        box = current.BoundingRectangle
+        if (current.Name and box.Width > 0 and box.Height > 0 and top <= box.Y < bottom
+                and box.X < rect.X + rect.Width and box.X + box.Width > rect.X):
+            positioned.append((box.Y, box.X, current.Name))
+    names, seen = [], set()
+    for _, _, name in sorted(positioned):
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
+def recently_visited_rooms(expand=True):
     """Read room tiles following Paltalk's Recently Visited section header."""
     clr = import_module("clr")
     root = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Microsoft.NET" / "assembly" / "GAC_MSIL"
@@ -34,12 +71,14 @@ def recently_visited_rooms():
     for window in windows:
         if window.Current.ProcessId not in pids:
             continue
-        button = window.FindFirst(a.TreeScope.Descendants,
-            a.PropertyCondition(a.AutomationElement.NameProperty, "BaseButton133"))
-        if button is None:
+        label = window.FindFirst(a.TreeScope.Descendants,
+            a.PropertyCondition(a.AutomationElement.NameProperty, "Show All Recently Visited Rooms"))
+        if label is None:
             continue
         walker = a.TreeWalker.ControlViewWalker
-        header = walker.GetParent(button)
+        header = walker.GetParent(label)
+        while header is not None and header.Current.ClassName != 'ui::rooms::ClosableListWidget':
+            header = walker.GetParent(header)
         if header is None:
             continue
         container = walker.GetParent(header)
@@ -48,22 +87,18 @@ def recently_visited_rooms():
 
         def read_tiles():
             children = container.FindAll(a.TreeScope.Children, a.Condition.TrueCondition)
-            after_header = False
-            names = []
-            for child in children:
-                if not after_header:
-                    after_header = child.Equals(header)
-                elif child.Current.ClassName == "ui::rooms::RoomTiles":
-                    name = child.Current.Name
-                    if name and name not in names:
-                        names.append(name)
-                else:
-                    break
-            return names
+            return _recent_tiles(a, children, header)
 
         names = read_tiles()
         if names:
             return names
+        if not expand:
+            return []
+        buttons = header.FindAll(a.TreeScope.Descendants,
+            a.PropertyCondition(a.AutomationElement.ClassNameProperty, 'qtctrl::FlatButton'))
+        button = next((item for item in buttons if (item.Current.Name or '').startswith('BaseButton')), None)
+        if button is None:
+            raise RuntimeError('Recently Visited expand button was not found.')
         # The list may be collapsed. Restore the original state even if reading fails.
         toggle = button.GetCurrentPattern(a.InvokePattern.Pattern)
         toggle.Invoke()

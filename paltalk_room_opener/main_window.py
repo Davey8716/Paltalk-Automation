@@ -285,7 +285,8 @@ class MainWindow(QMainWindow):
         self.mode_group.buttonClicked.connect(self.room_mode_changed)
         self.load_saved_settings()
         for field in self.rooms:
-            field.textEdited.connect(lambda _text: self.save_current_settings(announce=False))
+            field.textEdited.connect(lambda _text, room=field: self.room_text_edited(room))
+            field.editingFinished.connect(lambda room=field: self.finish_room_edit(room))
         self.delay.valueChanged.connect(lambda _value: self.save_current_settings(announce=False))
         self.update_room_limit_appearance()
         self.auto_open_button.toggled.connect(self.on_auto_open_toggled)
@@ -480,8 +481,16 @@ class MainWindow(QMainWindow):
                     f"room_{index}": value
                     for index, value in enumerate(saved_rooms, start=1)
                 }
+            seen = set()
             for index, field in enumerate(self.rooms, start=1):
-                field.setText(str(saved_rooms.get(f"room_{index}", "")))
+                name = str(saved_rooms.get(f"room_{index}", ""))
+                key = name.strip().casefold()
+                if key and key in seen:
+                    self.log.appendPlainText(f"Room {index} was cleared because its name duplicates another saved room.")
+                    name = ''
+                elif key:
+                    seen.add(key)
+                field.setText(name)
             self.delay.setValue(float(data.get("delay", 5)))
             (self.vip_button if data.get("mode") == "vip" else self.regular_button).setChecked(True)
             self.auto_open_button.setChecked(bool(data.get("open_on_paltalk_start", False)))
@@ -495,7 +504,37 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             QMessageBox.warning(self, "Settings", f"Could not save room mode: {exc}")
 
+    def room_text_edited(self, field):
+        for room in self.rooms:
+            if room is field or room.property('roomDuplicate'):
+                name = room.text().strip().casefold()
+                duplicate = bool(name and any(other is not room and other.text().strip().casefold() == name
+                                              for other in self.rooms))
+                self.set_room_duplicate(room, duplicate)
+        self.save_current_settings(announce=False)
+
+    @staticmethod
+    def set_room_duplicate(field, duplicate):
+        if bool(field.property('roomDuplicate')) != duplicate:
+            field.setProperty('roomDuplicate', duplicate)
+            field.style().unpolish(field)
+            field.style().polish(field)
+
+    def finish_room_edit(self, field):
+        name = field.text().strip()
+        if name and any(other is not field and other.text().strip().casefold() == name.casefold()
+                        for other in self.rooms):
+            field.clear()
+            self.set_room_duplicate(field, False)
+            self.log.appendPlainText(f'Room "{name}" is already in the list; duplicate entry cleared.')
+            self.save_current_settings(announce=False)
+
     def save_current_settings(self, announce=True):
+        names = [field.text().strip().casefold() for field in self.rooms if field.text().strip()]
+        if len(names) != len(set(names)):
+            if announce:
+                self.log.appendPlainText('Each configured room must have a different name.')
+            return False
         try:
             settings.save_settings(
                 [field.text() for field in self.rooms], self.delay.value(), self.selected_mode(),

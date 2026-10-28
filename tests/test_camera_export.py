@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QListWidget
+from PySide6.QtCore import Qt
 
 from paltalk_room_opener.main_window import MainWindow
 
@@ -36,6 +37,16 @@ class CameraExportTests(unittest.TestCase):
             MainWindow.export_camera_names(self.window([]))
         message.assert_called_once()
         dialog.assert_not_called()
+
+    def test_export_keeps_assigned_numbers_in_display_order(self):
+        window = self.window(['Alice', 'Zoë'])
+        window.camera_names.item(0).setData(Qt.ItemDataRole.UserRole, 2)
+        window.camera_names.item(1).setData(Qt.ItemDataRole.UserRole, 1)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'names.txt'
+            with patch('paltalk_room_opener.main_window.QFileDialog.getSaveFileName', return_value=(str(path), '')):
+                MainWindow.export_camera_names(window)
+            self.assertEqual(path.read_text(encoding='utf-8'), '2. Alice\n1. Zoë\n')
 
     def test_cancel_does_not_write(self):
         with patch('paltalk_room_opener.main_window.QFileDialog.getSaveFileName', return_value=('', '')), \

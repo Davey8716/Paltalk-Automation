@@ -129,9 +129,13 @@ def save_admin_phrases(phrases):
     ADMIN_SETTINGS_PATH.write_text(json.dumps({'banned_phrases': phrases}, indent=2, ensure_ascii=False), encoding='utf-8')
 
 
-def save_camera_settings(names, start_on_paltalk, alphabetical=False):
+def save_camera_settings(names, start_on_paltalk, alphabetical=False, username_numbers=None, next_username_number=None):
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    CAMERA_SETTINGS_PATH.write_text(json.dumps({"usernames": names, "start_on_paltalk": start_on_paltalk, "alphabetical": alphabetical}, indent=2), encoding="utf-8")
+    data = {"usernames": names, "start_on_paltalk": start_on_paltalk, "alphabetical": alphabetical}
+    if username_numbers is not None:
+        data['username_numbers'] = username_numbers
+        data['next_username_number'] = next_username_number
+    CAMERA_SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def load_settings():

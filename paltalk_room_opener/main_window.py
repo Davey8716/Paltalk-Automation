@@ -7,12 +7,20 @@ from PySide6.QtGui import QDesktopServices, QDrag
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
-    QStyle, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
+    QStyle, QStyledItemDelegate, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 from . import settings
 from .styles import APP_STYLE
 from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
+
+
+class CameraNameDelegate(QStyledItemDelegate):
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        number = index.data(Qt.ItemDataRole.UserRole)
+        if number is not None:
+            option.text = f'{number}. {option.text}'
 
 
 class RoomNameField(QLineEdit):
@@ -955,7 +963,8 @@ class MainWindow(QMainWindow):
         sort_controls.addWidget(export)
         layout.addLayout(sort_controls)
         self.camera_names = QListWidget()
-        self.camera_next_order = 0
+        self.camera_next_order = 1
+        self.camera_names.setItemDelegate(CameraNameDelegate(self.camera_names))
         self.camera_names.setObjectName('cameraNames')
         self.camera_names.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.camera_names.customContextMenuRequested.connect(self.camera_name_menu)
@@ -1005,12 +1014,22 @@ class MainWindow(QMainWindow):
             data = settings.load_camera_settings()
             names = data.get('usernames', [])
             if isinstance(names, list):
-                self.camera_names.addItems([name for name in names if isinstance(name, str) and name.strip()])
-                for index in range(self.camera_names.count()):
-                    item = self.camera_names.item(index)
+                numbers = data.get('username_numbers', [])
+                valid_numbers = (isinstance(numbers, list) and len(numbers) == len(names)
+                                 and all(type(n) is int and n > 0 for n in numbers)
+                                 and len(set(numbers)) == len(numbers))
+                for index, name in enumerate(names):
+                    if not isinstance(name, str) or not name.strip():
+                        continue
+                    self.camera_names.addItem(name)
+                    item = self.camera_names.item(self.camera_names.count() - 1)
                     item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-                    item.setData(Qt.ItemDataRole.UserRole, self.camera_next_order)
-                    self.camera_next_order += 1
+                    number = numbers[index] if valid_numbers else index + 1
+                    item.setData(Qt.ItemDataRole.UserRole, number)
+                    self.camera_next_order = max(self.camera_next_order, number + 1)
+                next_number = data.get('next_username_number')
+                if type(next_number) is int:
+                    self.camera_next_order = max(self.camera_next_order, next_number)
             self.camera_auto.setChecked(bool(data.get('start_on_paltalk', False)))
             self.camera_alphabetical.setChecked(bool(data.get('alphabetical', False)))
             if self.camera_alphabetical.isChecked():
@@ -1033,8 +1052,9 @@ class MainWindow(QMainWindow):
         return [item.text().strip() for item in sorted(items, key=lambda item: item.data(Qt.ItemDataRole.UserRole))]
 
     def export_camera_names(self):
-        names = [self.camera_names.item(i).text().strip() for i in range(self.camera_names.count())]
-        names = [name for name in names if name]
+        names = [(self.camera_names.item(i).data(Qt.ItemDataRole.UserRole) or i + 1,
+                  self.camera_names.item(i).text().strip()) for i in range(self.camera_names.count())]
+        names = [(number, name) for number, name in names if name]
         if not names:
             QMessageBox.information(self, 'Export usernames', 'There are no usernames to export.')
             return
@@ -1043,7 +1063,7 @@ class MainWindow(QMainWindow):
         if not filename:
             return
         try:
-            Path(filename).write_text(''.join(f'{index}. {name}\n' for index, name in enumerate(names, 1)),
+            Path(filename).write_text(''.join(f'{number}. {name}\n' for number, name in names),
                                       encoding='utf-8')
         except OSError as exc:
             QMessageBox.warning(self, 'Export usernames', f'Could not export usernames: {exc}')
@@ -1131,7 +1151,12 @@ class MainWindow(QMainWindow):
 
     def save_camera_settings(self):
         try:
-            settings.save_camera_settings(self.camera_username_list(), self.camera_auto.isChecked(), self.camera_alphabetical.isChecked())
+            items = sorted((self.camera_names.item(i) for i in range(self.camera_names.count())),
+                           key=lambda item: item.data(Qt.ItemDataRole.UserRole))
+            settings.save_camera_settings(self.camera_username_list(), self.camera_auto.isChecked(),
+                                          self.camera_alphabetical.isChecked(),
+                                          [item.data(Qt.ItemDataRole.UserRole) for item in items],
+                                          self.camera_next_order)
             self.camera_log.appendPlainText('Camera settings saved.')
             return True
         except OSError as exc:

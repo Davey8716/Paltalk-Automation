@@ -224,12 +224,30 @@ class CloseRoomTests(unittest.TestCase):
 
     def test_state_uses_identified_close_buttons_and_rejects_ambiguity(self):
         button = SimpleNamespace(Current=SimpleNamespace(AutomationId='Room close: The Garage'))
-        with patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
+        user32 = MagicMock()
+        user32.IsIconic.return_value = False
+        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
+             patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
              patch('paltalk_room_opener.automation._close_buttons', return_value=[button]):
             self.assertEqual(room_states(['The Garage', 'Other']), {'The Garage': True, 'Other': False})
-        with patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
+        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
+             patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
              patch('paltalk_room_opener.automation._close_buttons', return_value=[button, button]):
             self.assertEqual(room_states(['The Garage']), {})
+
+    def test_hidden_or_minimized_window_has_unavailable_state(self):
+        for visible, iconic in ((False, False), (True, True)):
+            user32 = MagicMock()
+            user32.IsWindowVisible.return_value = visible
+            user32.IsIconic.return_value = iconic
+            with self.subTest(visible=visible, iconic=iconic), \
+                 patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
+                 patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
+                 patch('paltalk_room_opener.automation._close_buttons') as buttons:
+                self.assertIsNone(room_states(['Alpha']))
+                buttons.assert_not_called()
 
     def test_matches_room_name_on_close_button_id(self):
         class Element:

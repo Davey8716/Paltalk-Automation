@@ -48,6 +48,20 @@ class RoomHighlightTests(unittest.TestCase):
         self.update({'Alpha': True, 'Beta': True})
         self.assertTrue(self.fields[1].property('roomOpen'))
 
+    def test_unavailable_scan_preserves_last_open_state(self):
+        self.update({'Alpha': True, 'Beta': False})
+        self.window.update_room_buttons = lambda: MainWindow.update_room_buttons(self.window)
+        MainWindow.room_states_received(self.window, None)
+        self.assertTrue(self.fields[0].property('roomOpen'))
+        self.assertEqual(self.buttons[0].text(), 'Close')
+
+    def test_toggle_always_checks_current_state(self):
+        window = SimpleNamespace(rooms=self.fields, room_states={'Alpha': True},
+                                 open_configured_room=MagicMock(), close_configured_room=MagicMock())
+        MainWindow.toggle_configured_room(window, 0)
+        window.open_configured_room.assert_called_once_with(0)
+        window.close_configured_room.assert_not_called()
+
     def test_unknown_state_allows_opening_named_rooms(self):
         self.fields[1].clear()
         self.update(None)

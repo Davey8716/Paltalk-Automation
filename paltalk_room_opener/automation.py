@@ -131,6 +131,13 @@ class PaltalkWindowNotFound(RuntimeError):
 
 def _paltalk_main_window(user32):
     """Find the unowned, maximizable Paltalk window, including hidden windows."""
+    user32.GetWindow.argtypes = [wintypes.HWND, wintypes.UINT]
+    user32.GetWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
     pids = {p.info['pid'] for p in psutil.process_iter(['pid', 'name'])
             if (p.info.get('name') or '').lower() == 'paltalk.exe'}
     windows = []
@@ -334,6 +341,15 @@ def _close_buttons(a):
 
 def room_states(names):
     """Read the same close controls used to close rooms."""
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    try:
+        hwnd = _paltalk_main_window(user32)
+    except PaltalkWindowNotFound:
+        return None
+    if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+        return None
     clr = import_module("clr")
     root = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Microsoft.NET" / "assembly" / "GAC_MSIL"
     for assembly in ("UIAutomationClient", "UIAutomationTypes"):

@@ -3,7 +3,7 @@
 import json
 import sys
 
-from .automation import open_rooms, restore_paltalk, room_states, recently_visited_rooms
+from .automation import close_room, open_rooms, restore_paltalk, room_states, recently_visited_rooms
 
 
 def send(kind, value):
@@ -35,6 +35,12 @@ def main():
         if states is None or any(name not in states for name in names):
             send('message', 'Could not determine open room status.')
             send('result', -2)
+            return
+        if action == 'single' and states[names[0]]:
+            stage = 'closing room'
+            send('stage', stage)
+            close_room(names[0], lambda message: send('message', message))
+            send('result', 0)
             return
         for name in names:
             if states[name]:

@@ -10,6 +10,7 @@ from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
 from paltalk_room_opener.worker import RoomStateWorker, RoomWorker, run_room_helper
+from paltalk_room_opener import room_helper_process
 
 
 class RoomHelperTests(unittest.TestCase):
@@ -72,6 +73,38 @@ class RoomHelperTests(unittest.TestCase):
              patch.object(worker, 'isInterruptionRequested', return_value=True):
             worker.run()
         self.assertEqual(results, [])
+
+    def test_single_action_restores_and_toggles_fresh_state(self):
+        for state in (True, False, None, {}):
+            events = []
+            states = {'Alpha': state} if isinstance(state, bool) else state
+            with self.subTest(state=state), \
+                 patch('sys.argv', ['helper', 'single', '["Alpha"]', '5']), \
+                 patch.object(room_helper_process, 'send', side_effect=lambda kind, value: events.append((kind, value))), \
+                 patch.object(room_helper_process, 'restore_paltalk') as restore, \
+                 patch.object(room_helper_process, 'room_states', return_value=states), \
+                 patch.object(room_helper_process, 'close_room') as close, \
+                 patch.object(room_helper_process, 'open_rooms', return_value=1) as opener:
+                room_helper_process.main()
+            restore.assert_called_once()
+            self.assertEqual(close.call_count, int(state is True))
+            self.assertEqual(opener.call_count, int(state is False))
+            if state is None or state == {}:
+                self.assertIn(('result', -2), events)
+
+    def test_single_restore_failure_does_not_change_room(self):
+        events = []
+        with patch('sys.argv', ['helper', 'single', '["Alpha"]']), \
+             patch.object(room_helper_process, 'send', side_effect=lambda kind, value: events.append((kind, value))), \
+             patch.object(room_helper_process, 'restore_paltalk', side_effect=RuntimeError('unavailable')), \
+             patch.object(room_helper_process, 'room_states') as states, \
+             patch.object(room_helper_process, 'close_room') as close, \
+             patch.object(room_helper_process, 'open_rooms') as opener:
+            room_helper_process.main()
+        states.assert_not_called()
+        close.assert_not_called()
+        opener.assert_not_called()
+        self.assertTrue(any(kind == 'error' and 'unavailable' in value for kind, value in events))
 
 
 if __name__ == '__main__':

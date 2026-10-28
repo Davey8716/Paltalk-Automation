@@ -47,14 +47,14 @@ def run_room_helper(action, names, interrupted, message=None, timeout=20, delay=
                 raise RuntimeError(f'Room operation stopped during {stage}.{suffix}')
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                suffix = ' The room outcome is unknown; check Paltalk before trying again.' if action == 'single' and stage in ('finding room tile', 'invoking room tile') else ''
+                suffix = ' The room outcome is unknown; check Paltalk before trying again.' if action == 'single' and stage in ('finding room tile', 'invoking room tile', 'closing room') else ''
                 raise RuntimeError(f'Room operation timed out during {stage}.{suffix}')
             try:
                 line = events.get(timeout=min(0.2, remaining))
             except queue.Empty:
                 continue
             if line is None:
-                suffix = ' The room outcome is unknown; check Paltalk before trying again.' if stage == 'invoking room tile' else ''
+                suffix = ' The room outcome is unknown; check Paltalk before trying again.' if stage in ('invoking room tile', 'closing room') else ''
                 raise RuntimeError(f'Room helper exited during {stage} without a result.{suffix}')
             try:
                 event = json.loads(line.decode('utf-8'))
@@ -198,7 +198,7 @@ class RoomWorker(QThread):
                 result = run_room_helper('single', self.names, self.isInterruptionRequested, self.message.emit)
                 self.completed.emit(result)
             except Exception as exc:
-                self.message.emit(f'Could not open room: {exc}')
+                self.message.emit(f'Could not toggle room: {exc}')
                 self.completed.emit(-1)
             return
         try:

@@ -629,7 +629,8 @@ class MainWindow(QMainWindow):
     def room_states_received(self, states):
         if self.worker and getattr(self.worker, 'check_existing', False):
             return
-        self.room_states = None if self.close_room_worker else states
+        if not self.close_room_worker and states is not None:
+            self.room_states = states
         self.update_room_buttons()
 
     def room_state_finished(self):
@@ -669,11 +670,7 @@ class MainWindow(QMainWindow):
             ))
 
     def toggle_configured_room(self, index):
-        name = self.rooms[index].text().strip()
-        if self.room_states and self.room_states.get(name):
-            self.close_configured_room(index)
-        else:
-            self.open_configured_room(index)
+        self.open_configured_room(index)
 
     def close_configured_room(self, index):
         name = self.rooms[index].text().strip()

@@ -20,7 +20,8 @@ class CameraExportTests(unittest.TestCase):
     def window(self, names):
         widget = QListWidget()
         widget.addItems(names)
-        return SimpleNamespace(camera_names=widget, clear_camera_export_reminder=Mock())
+        return SimpleNamespace(camera_names=widget, clear_camera_export_reminder=Mock(),
+                               remind_camera_export=Mock())
 
     def test_exports_displayed_order_and_unicode(self):
         for names in (['Zoë', 'Alice'], ['Alice', 'Zoë']):
@@ -86,6 +87,7 @@ class CameraExportTests(unittest.TestCase):
                           for i in range(2)], [2, 1])
         self.assertEqual(window.camera_next_order, 3)
         window.save_camera_settings.assert_called_once()
+        window.remind_camera_export.assert_called_once_with('red')
 
     def test_failed_deletion_restores_numbers(self):
         window = self.window(['Alice', 'Bob', 'Charlie'])
@@ -99,6 +101,7 @@ class CameraExportTests(unittest.TestCase):
         self.assertEqual([window.camera_names.item(i).data(Qt.ItemDataRole.UserRole)
                           for i in range(3)], [1, 2, 3])
         self.assertEqual(window.camera_next_order, 4)
+        window.remind_camera_export.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -980,7 +980,7 @@ class MainWindow(QMainWindow):
         self.camera_export_glow.setEnabled(False)
         self.camera_export.setGraphicsEffect(self.camera_export_glow)
         self.camera_export_flash = QTimer(self)
-        self.camera_export_flash.setInterval(650)
+        self.camera_export_flash.setInterval(2000)
         self.camera_export_flash.timeout.connect(self.flash_camera_export)
         self.camera_export_flashes_left = 0
         sort_controls.addWidget(self.camera_export)
@@ -1109,7 +1109,7 @@ class MainWindow(QMainWindow):
 
     def flash_camera_export(self):
         highlighted = not self.camera_export.property('exportHighlight')
-        self.camera_export.setProperty('exportHighlight', highlighted)
+        self.camera_export.setProperty('exportHighlight', self.camera_export_flash_color if highlighted else '')
         self.camera_export_glow.setEnabled(highlighted)
         self.camera_export.style().unpolish(self.camera_export)
         self.camera_export.style().polish(self.camera_export)
@@ -1118,18 +1118,20 @@ class MainWindow(QMainWindow):
         if self.camera_export_flashes_left <= 0:
             self.camera_export_flash.stop()
 
-    def remind_camera_export(self):
-        self.camera_export.setToolTip('New usernames have been added. Export to text to save an updated list.')
+    def remind_camera_export(self, color='green'):
+        self.camera_export.setToolTip('Usernames have changed. Export to text to save an updated list.')
         self.camera_export_flash.stop()
-        self.camera_export.setProperty('exportHighlight', False)
+        self.camera_export.setProperty('exportHighlight', '')
         self.camera_export_glow.setEnabled(False)
+        self.camera_export_flash_color = color
+        self.camera_export_glow.setColor(QColor('#20c86a' if color == 'green' else '#ed4b4b'))
         self.camera_export_flashes_left = 2
         self.flash_camera_export()
         self.camera_export_flash.start()
 
     def clear_camera_export_reminder(self):
         self.camera_export_flash.stop()
-        self.camera_export.setProperty('exportHighlight', False)
+        self.camera_export.setProperty('exportHighlight', '')
         self.camera_export_glow.setEnabled(False)
         self.camera_export.style().unpolish(self.camera_export)
         self.camera_export.style().polish(self.camera_export)
@@ -1227,8 +1229,10 @@ class MainWindow(QMainWindow):
             finally:
                 self.camera_names.blockSignals(signals_blocked)
             self.camera_next_order = old_next_order
-        elif self.camera_worker:
-            self.camera_worker.update_names(self.camera_username_list())
+        else:
+            if self.camera_worker:
+                self.camera_worker.update_names(self.camera_username_list())
+            self.remind_camera_export('red')
 
     def save_camera_settings(self):
         try:

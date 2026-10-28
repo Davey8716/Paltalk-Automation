@@ -1,9 +1,11 @@
 """Main application window."""
 
+from pathlib import Path
+
 from PySide6.QtCore import QMimeData, Qt, QTimer
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel,
+    QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
     QStyle, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
@@ -878,6 +880,8 @@ class MainWindow(QMainWindow):
         self.camera_alphabetical.setObjectName('cameraAlphabetical')
         self.camera_alphabetical.setCheckable(True)
         sort_controls.addWidget(self.camera_alphabetical)
+        export = QPushButton('Export to text')
+        sort_controls.addWidget(export)
         layout.addLayout(sort_controls)
         self.camera_names = QListWidget()
         self.camera_next_order = 0
@@ -943,6 +947,7 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.camera_log.appendPlainText(f'Could not load camera settings: {exc}')
         add.clicked.connect(self.add_camera_name)
+        export.clicked.connect(self.export_camera_names)
         self.camera_alphabetical.toggled.connect(self.camera_alphabetical_changed)
         self.camera_names.itemChanged.connect(self.camera_name_changed)
         self.camera_entry.returnPressed.connect(self.add_camera_name)
@@ -955,6 +960,22 @@ class MainWindow(QMainWindow):
     def camera_username_list(self):
         items = [self.camera_names.item(i) for i in range(self.camera_names.count())]
         return [item.text().strip() for item in sorted(items, key=lambda item: item.data(Qt.ItemDataRole.UserRole))]
+
+    def export_camera_names(self):
+        names = [self.camera_names.item(i).text().strip() for i in range(self.camera_names.count())]
+        names = [name for name in names if name]
+        if not names:
+            QMessageBox.information(self, 'Export usernames', 'There are no usernames to export.')
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self, 'Export usernames', 'camera-usernames.txt', 'Text files (*.txt)')
+        if not filename:
+            return
+        try:
+            Path(filename).write_text(''.join(f'{index}. {name}\n' for index, name in enumerate(names, 1)),
+                                      encoding='utf-8')
+        except OSError as exc:
+            QMessageBox.warning(self, 'Export usernames', f'Could not export usernames: {exc}')
 
     def sort_camera_names(self, alphabetical):
         items = [self.camera_names.takeItem(0) for _ in range(self.camera_names.count())]

@@ -2,6 +2,7 @@
 
 import json
 import sys
+import threading
 
 from .camera_automation import watch_cameras
 
@@ -13,10 +14,29 @@ def send(kind, value):
 
 def main():
     names = json.loads(sys.argv[1])
+    lock = threading.Lock()
+
+    def read_updates():
+        nonlocal names
+        for line in sys.stdin:
+            try:
+                updated = json.loads(line)
+                if not isinstance(updated, list) or not all(isinstance(name, str) for name in updated):
+                    continue
+                with lock:
+                    names = updated
+            except (ValueError, TypeError):
+                continue
+
+    def current_names():
+        with lock:
+            return list(names)
+
+    threading.Thread(target=read_updates, daemon=True).start()
     try:
         watch_cameras(names, lambda value: send('message', value), lambda: False,
                       lambda value: send('invoked', value), lambda value: send('failed', value),
-                      lambda value: send('progress', value))
+                      lambda value: send('progress', value), current_names)
     except Exception as exc:
         send('error', str(exc) or type(exc).__name__)
 

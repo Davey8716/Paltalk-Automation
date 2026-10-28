@@ -93,6 +93,31 @@ class CameraHelperTests(unittest.TestCase):
         self.assertEqual(len(children), 1)
         self.assertFalse(psutil.pid_exists(children[0]))
 
+    def test_name_updates_reach_running_helper(self):
+        code = ("import json,sys,time; "
+                "print(json.dumps({'kind':'message','value':'ready'}),flush=True); "
+                "line=sys.stdin.readline(); "
+                "print(json.dumps({'kind':'message','value':line.strip()}),flush=True); time.sleep(30)")
+        worker = CameraWorker(['Alice'])
+        loop = QEventLoop()
+        messages = []
+        def received(value):
+            messages.append(value)
+            if value == 'ready':
+                worker.update_names(['Alice', 'Bob'])
+            else:
+                worker.requestInterruption()
+        worker.message.connect(received)
+        worker.finished.connect(loop.quit)
+        with self.launch_script(code):
+            worker.start()
+            QTimer.singleShot(5000, loop.quit)
+            loop.exec()
+            if worker.isRunning():
+                worker.requestInterruption()
+            self.assertTrue(worker.wait(3000))
+        self.assertEqual(messages, ['ready', '["Alice", "Bob"]'])
+
 
 if __name__ == '__main__':
     unittest.main()

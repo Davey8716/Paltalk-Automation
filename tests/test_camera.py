@@ -191,6 +191,33 @@ class CameraTests(unittest.TestCase):
         process.kill.assert_called_once()
         process.communicate.assert_called_once()
 
+    def test_new_names_are_used_on_next_scan(self):
+        class Scanner:
+            room_identity = (1,)
+            ocr_lines = []
+            ocr_comparisons = []
+            def __init__(self):
+                self.scans = 0
+                self.opened = []
+            def scan(self):
+                self.scans += 1
+                return [(('Bob',), 'available', object(), 10, 'On Cam')]
+            def open_if_available(self, name, stopped, names):
+                self.opened.append(name)
+                return True
+        scanner = Scanner()
+        names = ['Alice']
+        ticks = []
+        def sleep(_):
+            ticks.append(1)
+            if len(ticks) == 1:
+                names.append('Bob')
+        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
+             patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=sleep):
+            watch_cameras(names, lambda _: None, lambda: len(ticks) >= 22,
+                          current_names=lambda: list(names))
+        self.assertEqual(scanner.opened, ['Bob'])
+
 
 if __name__ == '__main__':
     unittest.main()

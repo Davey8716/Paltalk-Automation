@@ -313,7 +313,14 @@ class CameraWorker(QThread):
 
     def __init__(self, names):
         super().__init__()
-        self.names = names
+        self.names = list(names)
+        self.names_lock = threading.Lock()
+        self.name_updates = queue.Queue()
+
+    def update_names(self, names):
+        with self.names_lock:
+            self.names = list(names)
+            self.name_updates.put(list(self.names))
 
     def run(self):
         while not self.isInterruptionRequested():
@@ -331,10 +338,14 @@ class CameraWorker(QThread):
         executable = sys.executable
         if Path(executable).name.lower() == 'pythonw.exe':
             executable = str(Path(executable).with_name('python.exe'))
+        with self.names_lock:
+            initial_names = list(self.names)
+            while not self.name_updates.empty():
+                self.name_updates.get_nowait()
         process = subprocess.Popen(
             [executable, '-m', 'paltalk_room_opener.camera_helper_process',
-             json.dumps(self.names, ensure_ascii=True)],
-            cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.DEVNULL,
+             json.dumps(initial_names, ensure_ascii=True)],
+            cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
         )
@@ -352,6 +363,13 @@ class CameraWorker(QThread):
         deadline = time.monotonic() + timeout
         try:
             while not self.isInterruptionRequested():
+                try:
+                    while True:
+                        updated = self.name_updates.get_nowait()
+                        process.stdin.write((json.dumps(updated, ensure_ascii=True) + '\n').encode('utf-8'))
+                        process.stdin.flush()
+                except queue.Empty:
+                    pass
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     detail = (' The camera outcome is unknown; its visible state will be checked before retrying.'
@@ -401,4 +419,5 @@ class CameraWorker(QThread):
                 process.kill()
             process.wait()
             psutil.wait_procs(children, timeout=2)
+            process.stdin.close()
             process.stdout.close()

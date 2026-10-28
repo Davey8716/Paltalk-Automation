@@ -326,7 +326,9 @@ class CameraScanner:
     def open_if_available(self, name, stopped=lambda: False, configured_names=None):
         # A second complete capture and lookup ensures list reorderings do not reuse stale elements.
         room = getattr(self, 'room_identity', None)
-        matches, conflict = _match_rows(self.scan(), configured_names or [name], name)
+        rows = self.scan()
+        names = configured_names() if callable(configured_names) else configured_names
+        matches, conflict = _match_rows(rows, names if names is not None else [name], name)
         if (stopped() or room != getattr(self, 'room_identity', None) or
                 conflict or len(matches) != 1 or matches[0][1] != 'available'):
             return False
@@ -336,7 +338,7 @@ class CameraScanner:
         return True
 
 
-def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None):
+def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None, current_names=None):
     if invoked is None:
         invoked = log
     if failed is None:
@@ -355,6 +357,8 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None)
     diagnostic_reported = False
     while not stopped():
         try:
+            if current_names is not None:
+                names = list(dict.fromkeys(name.strip() for name in current_names() if name.strip()))
             rows = scanner.scan()
             if scanner.room_identity != previous_room:
                 previous_room = scanner.room_identity
@@ -368,8 +372,14 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None)
             for name in names:
                 if stopped():
                     break
-                matches, conflict = _match_rows(rows, names, name)
-                if sum(_normal(other) == _normal(name) for other in names) != 1:
+                if current_names is not None:
+                    latest_names = list(dict.fromkeys(value.strip() for value in current_names() if value.strip()))
+                    if name not in latest_names:
+                        continue
+                else:
+                    latest_names = names
+                matches, conflict = _match_rows(rows, latest_names, name)
+                if sum(_normal(other) == _normal(name) for other in latest_names) != 1:
                     status = 'ambiguous configured username'
                 elif len(matches) != 1 or conflict:
                     if conflict:
@@ -400,7 +410,9 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None)
                 if time.monotonic() - attempts.get(key, 0) < 10:
                     continue
                 attempts[key] = time.monotonic()
-                if scanner.open_if_available(name, stopped, names):
+                def name_removed():
+                    return stopped() or (current_names is not None and name not in current_names())
+                if scanner.open_if_available(name, name_removed, current_names or latest_names):
                     invoked(f'Invoked camera button for {name}; check the video view to confirm it opened.')
                     # Let Paltalk finish opening the view before invoking another.
                     for _ in range(10):

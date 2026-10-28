@@ -968,6 +968,11 @@ class MainWindow(QMainWindow):
     def camera_name_changed(self, _item):
         if self.camera_alphabetical.isChecked():
             self.sort_camera_names(True)
+        self.update_camera_names()
+
+    def update_camera_names(self):
+        if self.save_camera_settings() and self.camera_worker:
+            self.camera_worker.update_names(self.camera_username_list())
 
     def camera_alphabetical_changed(self, enabled):
         self.sort_camera_names(enabled)
@@ -1008,6 +1013,7 @@ class MainWindow(QMainWindow):
             self.camera_names.setCurrentItem(item)
             self.camera_names.scrollToItem(item)
             self.camera_entry.clear()
+            self.update_camera_names()
 
     def remove_camera_name(self):
         items = self.camera_names.selectedItems()
@@ -1029,10 +1035,7 @@ class MainWindow(QMainWindow):
         if not self.save_camera_settings():
             self.camera_names.insertItem(row, removed)
         elif self.camera_worker:
-            self.camera_restart_pending = bool(self.camera_username_list())
-            self.camera_worker.requestInterruption()
-            self.camera_stop.setEnabled(False)
-            self.camera_log.appendPlainText('Updating monitored usernames...')
+            self.camera_worker.update_names(self.camera_username_list())
 
     def save_camera_settings(self):
         try:

@@ -150,9 +150,14 @@ class MainWindow(QMainWindow):
         layout.setSpacing(18)
         instruction_row = QHBoxLayout()
         instruction_row.addWidget(QLabel("Enter exact room names. Drag a ⋮⋮ handle or selected text to reorder."))
+        recent_rooms_controls = QVBoxLayout()
+        recent_rooms_controls.setSpacing(2)
+        self.room_tray_status_label = QLabel('Start in tray: Off')
+        recent_rooms_controls.addWidget(self.room_tray_status_label, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.recent_rooms_button = QPushButton("Recently visited")
         self.recent_rooms_button.setFixedSize(200,35)
-        instruction_row.addWidget(self.recent_rooms_button)
+        recent_rooms_controls.addWidget(self.recent_rooms_button)
+        instruction_row.addLayout(recent_rooms_controls)
         layout.addLayout(instruction_row)
 
         form = QGridLayout()
@@ -945,7 +950,9 @@ class MainWindow(QMainWindow):
             self.log.appendPlainText(f'Could not save app state: {exc}')
 
     def update_tray_status(self, enabled):
-        self.tray_status_label.setText(f'Start in tray: {"On" if enabled else "Off"}')
+        text = f'Start in tray: {"On" if enabled else "Off"}'
+        self.tray_status_label.setText(text)
+        self.room_tray_status_label.setText(text)
 
     def add_camera_name(self):
         name = self.camera_entry.text().strip()

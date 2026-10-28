@@ -328,7 +328,9 @@ class CameraScanner:
         return True
 
 
-def watch_cameras(names, log, stopped):
+def watch_cameras(names, log, stopped, invoked=None):
+    if invoked is None:
+        invoked = log
     scanner = CameraScanner()
     scanner.stopped = stopped
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
@@ -385,7 +387,7 @@ def watch_cameras(names, log, stopped):
                     continue
                 attempts[key] = time.monotonic()
                 if scanner.open_if_available(name, stopped, names):
-                    log(f'Invoked camera button for {name}; check the video view to confirm it opened.')
+                    invoked(f'Invoked camera button for {name}; check the video view to confirm it opened.')
                     # Let Paltalk finish opening the view before invoking another.
                     for _ in range(40):
                         if stopped():

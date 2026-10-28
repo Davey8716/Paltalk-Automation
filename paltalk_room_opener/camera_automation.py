@@ -429,7 +429,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                 log(f'Camera watcher: {message}')
                 last_error = message
         progress('waiting for the next scan')
-        for _ in range(20):
+        for _ in range(5):
             if stopped():
                 break
-            time.sleep(.1)
+            time.sleep(.05)

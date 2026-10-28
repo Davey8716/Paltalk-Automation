@@ -49,6 +49,8 @@ The watcher checks three OCR readings and attempts to remove colored badges besi
 
 After invoking a camera, the watcher waits one second before opening another. Stop interrupts that wait and cancels an OCR process in progress.
 
+The watcher waits a quarter of a second between scans. Each scan also takes time to read the visible list, so the actual interval varies. A camera that has already been attempted is not attempted again for at least ten seconds.
+
 ## Admin Actions
 
 Add banned phrases on the **Admin Actions** tab. Double-click a phrase or select it and click **Edit selected** to change it; select a phrase and click **Remove selected** to remove it and immediately save the list. Click **Save phrases** to keep additions and edits. The list is stored in `%APPDATA%\PaltalkRoomOpener\admin_actions.json` and supports emoji. Empty and duplicate phrases are rejected.

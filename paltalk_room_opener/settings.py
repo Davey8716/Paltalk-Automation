@@ -81,10 +81,20 @@ def merge_recent_rooms(names):
         if isinstance(name, str) and name.strip() and name not in seen:
             seen.add(name)
             merged.append(name)
+    if load_app_state().get('recent_rooms_alphabetical', False):
+        merged.sort(key=str.casefold)
     if merged != saved:
         APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
         RECENT_ROOMS_PATH.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding='utf-8')
     return merged
+
+
+def sort_recent_rooms():
+    names = load_recent_rooms()
+    sorted_names = sorted(names, key=str.casefold)
+    if sorted_names != names:
+        RECENT_ROOMS_PATH.write_text(json.dumps(sorted_names, indent=2, ensure_ascii=False), encoding='utf-8')
+    return sorted_names
 
 
 def load_app_state():

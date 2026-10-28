@@ -316,8 +316,11 @@ class MainWindow(QMainWindow):
                 except (OSError, ValueError, TypeError) as exc:
                     self.log.appendPlainText(f'Could not save recently visited rooms: {exc}')
             return
+        scanned_names = names
         try:
             names = settings.load_recent_rooms() if error else settings.merge_recent_rooms(names)
+            if not error:
+                names = list(dict.fromkeys([*(name for name in scanned_names if name in names), *names]))
         except (OSError, ValueError, TypeError) as exc:
             QMessageBox.warning(self, "Recently visited", f"Could not read or save recent rooms: {exc}")
             return
@@ -350,12 +353,14 @@ class MainWindow(QMainWindow):
         copy_button.setEnabled(False)
         def change_sort(enabled):
             try:
+                if enabled:
+                    settings.sort_recent_rooms()
                 settings.save_app_state(recent_rooms_alphabetical=enabled)
             except (OSError, ValueError, TypeError) as exc:
                 alphabetical.blockSignals(True)
                 alphabetical.setChecked(not enabled)
                 alphabetical.blockSignals(False)
-                QMessageBox.warning(dialog, 'Recently visited', f'Could not save sort preference: {exc}')
+                QMessageBox.warning(dialog, 'Recently visited', f'Could not save sort preference or room order: {exc}')
                 return
             selected = rooms.currentItem().text() if rooms.currentItem() else None
             rooms.clear()

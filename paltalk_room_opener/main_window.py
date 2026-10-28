@@ -3,7 +3,7 @@
 from PySide6.QtCore import QMimeData, Qt, QTimer
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
+    QApplication, QButtonGroup, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
     QStyle, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
 )
@@ -103,7 +103,9 @@ class MainWindow(QMainWindow):
         layout.setSpacing(18)
         layout.addWidget(QLabel("Enter exact room names. Drag a ⋮⋮ handle or selected text to reorder."))
 
-        form = QFormLayout()
+        form = QGridLayout()
+        form.setColumnStretch(2, 1)
+        form.setColumnStretch(4, 1)
         self.rooms = []
         self.room_labels = []
         self.open_room_buttons = []
@@ -112,17 +114,14 @@ class MainWindow(QMainWindow):
             field.setPlaceholderText(f"Room {index + 1} name")
             field.setMaximumWidth(580)
             label = QLabel(f"Room {index + 1}:")
-            row = QHBoxLayout()
-            row.addWidget(RoomDragHandle(index))
-            row.addWidget(label)
-            row.addWidget(field)
+            form.addWidget(RoomDragHandle(index), index, 0)
+            form.addWidget(label, index, 1)
+            form.addWidget(field, index, 2)
             open_button = QPushButton("Open")
             open_button.setEnabled(False)
             open_button.clicked.connect(lambda checked=False, i=index: self.toggle_configured_room(i))
             field.textChanged.connect(self.update_room_buttons)
-            row.addWidget(open_button)
-            row.addStretch()
-            form.addRow(row)
+            form.addWidget(open_button, index, 3)
             self.rooms.append(field)
             self.room_labels.append(label)
             self.open_room_buttons.append(open_button)
@@ -130,7 +129,9 @@ class MainWindow(QMainWindow):
         self.delay.setRange(5, 60)
         self.delay.setValue(5)
         self.delay.setSuffix(" seconds")
-        form.addRow("Delay between rooms:", self.delay)
+        self.delay.setMaximumWidth(580)
+        form.addWidget(QLabel("Delay between rooms:"), 5, 0, 1, 2)
+        form.addWidget(self.delay, 5, 2)
         layout.addLayout(form)
 
         layout.addWidget(QLabel("Open Paltalk and display the My Rooms / Rooms view before starting."))

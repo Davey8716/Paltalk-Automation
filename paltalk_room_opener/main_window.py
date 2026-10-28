@@ -159,16 +159,16 @@ class MainWindow(QMainWindow):
         tabs.setCornerWidget(menu_button, Qt.Corner.TopRightCorner)
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(38, 32, 38, 32)
+        layout.setContentsMargins(38, 10, 38, 32)
         layout.setSpacing(18)
+        self.room_tray_status_label = QLabel('Start in tray: Off')
+        layout.addWidget(self.room_tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
         instruction_row = QHBoxLayout()
         instruction_row.addWidget(QLabel("Enter exact room names. Drag a ⋮⋮ handle or selected text to reorder."))
         recent_rooms_controls = QVBoxLayout()
         recent_rooms_controls.setSpacing(2)
-        self.room_tray_status_label = QLabel('Start in tray: Off')
-        recent_rooms_controls.addWidget(self.room_tray_status_label, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.recent_rooms_button = QPushButton("Recently visited")
-        self.recent_rooms_button.setFixedSize(200,35)
+        self.recent_rooms_button.setFixedSize(150,35)
         recent_rooms_controls.addWidget(self.recent_rooms_button)
         instruction_row.addLayout(recent_rooms_controls)
         layout.addLayout(instruction_row)
@@ -216,6 +216,7 @@ class MainWindow(QMainWindow):
         self.regular_button.setObjectName("regularModeButton")
         self.vip_button.setObjectName("vipModeButton")
         for button in (self.regular_button, self.vip_button):
+            button.setFixedSize(150,35)
             button.setCheckable(True)
         self.mode_group = QButtonGroup(self)
         self.mode_group.setExclusive(True)
@@ -224,14 +225,15 @@ class MainWindow(QMainWindow):
         self.regular_button.setChecked(True)
 
         self.auto_open_button = QPushButton("Open when Paltalk starts")
+        self.auto_open_button.setFixedSize(180,35)
         self.auto_open_button.setObjectName("autoOpenButton")
         self.auto_open_button.setCheckable(True)
 
-        self.save_button = QPushButton("Save settings")
         for button in (
-            self.regular_button, self.vip_button, self.auto_open_button, self.save_button,
+            self.regular_button, self.vip_button, self.auto_open_button,
         ):
             buttons.addWidget(button)
+        buttons.addStretch()
         layout.addLayout(buttons)
 
         self.log = QPlainTextEdit()
@@ -253,12 +255,14 @@ class MainWindow(QMainWindow):
         self.start_in_tray.toggled.connect(self.save_start_in_tray)
         self.start_in_tray.toggled.connect(self.update_tray_status)
 
-        self.save_button.clicked.connect(self.save_current_settings)
         self.start_button.clicked.connect(self.toggle_opening)
         self.close_all_button.clicked.connect(self.close_all_rooms)
         self.recent_rooms_button.clicked.connect(self.show_recent_rooms)
         self.mode_group.buttonClicked.connect(self.room_mode_changed)
         self.load_saved_settings()
+        for field in self.rooms:
+            field.textEdited.connect(lambda _text: self.save_current_settings(announce=False))
+        self.delay.valueChanged.connect(lambda _value: self.save_current_settings(announce=False))
         self.update_room_limit_appearance()
         self.auto_open_button.toggled.connect(self.on_auto_open_toggled)
         self.paltalk_start_timer = QTimer(self)
@@ -467,13 +471,14 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             QMessageBox.warning(self, "Settings", f"Could not save room mode: {exc}")
 
-    def save_current_settings(self):
+    def save_current_settings(self, announce=True):
         try:
             settings.save_settings(
                 [field.text() for field in self.rooms], self.delay.value(), self.selected_mode(),
                 self.auto_open_button.isChecked(),
             )
-            self.log.appendPlainText("Settings saved.")
+            if announce:
+                self.log.appendPlainText("Settings saved.")
             return True
         except OSError as exc:
             QMessageBox.warning(self, "Settings", f"Could not save settings: {exc}")
@@ -821,7 +826,7 @@ class MainWindow(QMainWindow):
     def create_admin_tab(self, tabs):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(38, 32, 38, 32)
+        layout.setContentsMargins(38, 10, 38, 32)
         self.tray_status_label = QLabel('Start in tray: Off')
         layout.addWidget(self.tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addWidget(QLabel('Banned phrases'))
@@ -953,7 +958,9 @@ class MainWindow(QMainWindow):
     def create_camera_tab(self, tabs):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(38, 32, 38, 32)
+        layout.setContentsMargins(38, 10, 38, 32)
+        self.camera_tray_status_label = QLabel('Start in tray: Off')
+        layout.addWidget(self.camera_tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addWidget(QLabel('Monitor up to 200 usernames in the visible On Cam list of the rooms you enter.\n' \
         'This is a global camera monitor across rooms and is not room specific.'))
         sort_controls = QHBoxLayout()
@@ -985,12 +992,16 @@ class MainWindow(QMainWindow):
         self.camera_auto = QPushButton('Start when Paltalk starts')
         self.camera_auto.setObjectName('autoOpenButton')
         self.camera_auto.setCheckable(True)
-        save = QPushButton('Save settings')
+        
         self.camera_start = QPushButton('Start')
         self.camera_stop = QPushButton('Stop')
+
+        
         self.camera_stop.setEnabled(False)
-        for button in (self.camera_auto, save, self.camera_start, self.camera_stop):
+        for button in (self.camera_auto, self.camera_start, self.camera_stop):
+            button.setFixedSize(200, 35)
             controls.addWidget(button)
+        controls.addStretch()
         layout.addLayout(controls)
         output = QHBoxLayout()
         invoked_column = QVBoxLayout()
@@ -1045,7 +1056,6 @@ class MainWindow(QMainWindow):
         self.camera_names.itemChanged.connect(self.camera_name_changed)
         self.camera_entry.returnPressed.connect(self.add_camera_name)
         remove.clicked.connect(self.remove_camera_name)
-        save.clicked.connect(self.save_camera_settings)
         self.camera_auto.toggled.connect(self.camera_auto_changed)
         self.camera_start.clicked.connect(self.start_cameras)
         self.camera_stop.clicked.connect(self.stop_cameras)
@@ -1109,6 +1119,7 @@ class MainWindow(QMainWindow):
         text = f'Start in tray: {"On" if enabled else "Off"}'
         self.tray_status_label.setText(text)
         self.room_tray_status_label.setText(text)
+        self.camera_tray_status_label.setText(text)
 
     def add_camera_name(self):
         name = self.camera_entry.text().strip()

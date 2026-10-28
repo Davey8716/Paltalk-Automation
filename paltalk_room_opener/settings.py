@@ -156,7 +156,7 @@ def load_settings():
         return {}
 
 
-def save_settings(rooms, delay, mode, open_on_paltalk_start, monitor_rooms=False, reopen_rooms=False):
+def save_settings(rooms, delay, mode, open_on_paltalk_start):
     """Save the five room entries and opening preferences."""
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     data = {
@@ -164,8 +164,6 @@ def save_settings(rooms, delay, mode, open_on_paltalk_start, monitor_rooms=False
         "delay": delay,
         "mode": mode,
         "open_on_paltalk_start": open_on_paltalk_start,
-        "monitor_rooms": monitor_rooms,
-        "reopen_rooms": reopen_rooms,
     }
     SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 

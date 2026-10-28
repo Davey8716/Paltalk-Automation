@@ -5,7 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import QMimeData, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QDrag
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QCheckBox, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
+    QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
     QGraphicsDropShadowEffect, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
     QStyle, QStyledItemDelegate, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
@@ -131,8 +131,6 @@ class MainWindow(QMainWindow):
         self.recent_rooms_worker = None
         self.recent_rooms_manual_pending = False
         self.room_states = None
-        self.monitor_states = {}
-        self.monitor_reopen_pending = set()
         self.camera_worker = None
         self.chat_reader_worker = None
         self._closing_pending = False
@@ -238,15 +236,6 @@ class MainWindow(QMainWindow):
         buttons.addStretch()
         layout.addLayout(buttons)
 
-        monitor_row = QHBoxLayout()
-        self.monitor_rooms = QCheckBox("Alert when a room closes")
-        self.reopen_rooms = QCheckBox("Reopen closed rooms")
-        self.reopen_rooms.setToolTip("Attempt to reopen rooms that monitoring detects as closed")
-        monitor_row.addWidget(self.monitor_rooms)
-        monitor_row.addWidget(self.reopen_rooms)
-        monitor_row.addStretch()
-        layout.addLayout(monitor_row)
-
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         layout.addWidget(self.log)
@@ -276,9 +265,6 @@ class MainWindow(QMainWindow):
         self.delay.valueChanged.connect(lambda _value: self.save_current_settings(announce=False))
         self.update_room_limit_appearance()
         self.auto_open_button.toggled.connect(self.on_auto_open_toggled)
-        self.monitor_rooms.toggled.connect(self.monitor_settings_changed)
-        self.reopen_rooms.toggled.connect(self.monitor_settings_changed)
-        self.reopen_rooms.setEnabled(self.monitor_rooms.isChecked())
         self.paltalk_start_timer = QTimer(self)
         self.paltalk_start_timer.setInterval(1000)
         self.paltalk_start_timer.timeout.connect(self.check_for_paltalk_start)
@@ -475,8 +461,6 @@ class MainWindow(QMainWindow):
             self.delay.setValue(float(data.get("delay", 5)))
             (self.vip_button if data.get("mode") == "vip" else self.regular_button).setChecked(True)
             self.auto_open_button.setChecked(bool(data.get("open_on_paltalk_start", False)))
-            self.monitor_rooms.setChecked(bool(data.get("monitor_rooms", False)))
-            self.reopen_rooms.setChecked(bool(data.get("reopen_rooms", False)))
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f"Could not load settings: {exc}")
 
@@ -491,7 +475,7 @@ class MainWindow(QMainWindow):
         try:
             settings.save_settings(
                 [field.text() for field in self.rooms], self.delay.value(), self.selected_mode(),
-                self.auto_open_button.isChecked(), self.monitor_rooms.isChecked(), self.reopen_rooms.isChecked(),
+                self.auto_open_button.isChecked(),
             )
             if announce:
                 self.log.appendPlainText("Settings saved.")
@@ -526,7 +510,7 @@ class MainWindow(QMainWindow):
             return
         self.start_room_worker([name], False, f"room: {name}", check_existing=True)
 
-    def start_room_worker(self, names, automatic, description, check_existing=False, monitoring=False):
+    def start_room_worker(self, names, automatic, description, check_existing=False):
         if self.worker or self.close_room_worker or not self.save_current_settings():
             return
         if not automatic:
@@ -535,7 +519,7 @@ class MainWindow(QMainWindow):
             self.auto_open_handled_for_session = True
         self.worker = RoomWorker(names, self.delay.value(), automatic=automatic, check_existing=check_existing)
         self.worker.message.connect(self.log.appendPlainText)
-        if automatic and not monitoring:
+        if automatic:
             self.worker.completed.connect(self.automatic_open_finished)
         self.worker.finished.connect(self.finished)
         self.start_button.setText("Stop")
@@ -638,37 +622,6 @@ class MainWindow(QMainWindow):
                       else "no configured room tiles became available")
             self.log.appendPlainText(f"Automatic opening stopped: {reason}.")
 
-    def monitor_settings_changed(self, _enabled):
-        self.reopen_rooms.setEnabled(self.monitor_rooms.isChecked())
-        self.monitor_states.clear()
-        self.monitor_reopen_pending.clear()
-        self.save_current_settings(announce=False)
-
-    def process_room_monitor(self, states):
-        if not self.monitor_rooms.isChecked() or states is None:
-            return
-        names = set(self.selected_room_names())
-        self.monitor_states = {name: state for name, state in self.monitor_states.items() if name in names}
-        self.monitor_reopen_pending.intersection_update(names)
-        for name in names:
-            if name not in states:
-                continue
-            is_open = states[name]
-            if self.monitor_states.get(name) is True and not is_open:
-                message = f"Room closed: {name}"
-                self.log.appendPlainText(message)
-                if self.tray_icon is not None:
-                    self.tray_icon.showMessage("Paltalk room closed", message, QSystemTrayIcon.MessageIcon.Warning)
-                if self.reopen_rooms.isChecked():
-                    self.monitor_reopen_pending.add(name)
-            if is_open:
-                self.monitor_reopen_pending.discard(name)
-            self.monitor_states[name] = is_open
-        if self.monitor_reopen_pending and not self.worker and not self.close_room_worker:
-            pending = [name for name in self.selected_room_names() if name in self.monitor_reopen_pending]
-            self.monitor_reopen_pending.clear()
-            self.start_room_worker(list(dict.fromkeys(pending)), True, "reopening monitored rooms", monitoring=True)
-
     def selected_mode(self):
         return "vip" if self.vip_button.isChecked() else "regular"
 
@@ -688,8 +641,6 @@ class MainWindow(QMainWindow):
             return
         if not self.close_room_worker and states is not None:
             self.room_states = states
-            if hasattr(self, "monitor_rooms"):
-                self.process_room_monitor(states)
         self.update_room_buttons()
 
     def room_state_finished(self):
@@ -730,10 +681,6 @@ class MainWindow(QMainWindow):
             ))
 
     def toggle_configured_room(self, index):
-        name = self.rooms[index].text().strip()
-        if hasattr(self, 'monitor_states') and getattr(self, 'room_states', None) and self.room_states.get(name):
-            self.monitor_states.pop(name, None)
-            self.monitor_reopen_pending.discard(name)
         self.open_configured_room(index)
 
     def close_configured_room(self, index):
@@ -762,8 +709,6 @@ class MainWindow(QMainWindow):
         self.auto_open_pending = False
         self.auto_open_attempts_remaining = 0
         self.auto_open_handled_for_session = True
-        self.monitor_states.clear()
-        self.monitor_reopen_pending.clear()
         self.close_room_worker = CloseAllRoomsWorker(names)
         self.close_room_worker.message.connect(self.log.appendPlainText)
         self.close_room_worker.finished.connect(self.close_room_finished)

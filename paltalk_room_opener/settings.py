@@ -9,6 +9,31 @@ APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming
 SETTINGS_PATH = APP_DATA_DIR / "room_names.json"
 CAMERA_SETTINGS_PATH = APP_DATA_DIR / "camera_names.json"
 APP_STATE_PATH = APP_DATA_DIR / "app_state.json"
+RECENT_ROOMS_PATH = APP_DATA_DIR / "recent_rooms.json"
+
+
+def load_recent_rooms():
+    try:
+        names = json.loads(RECENT_ROOMS_PATH.read_text(encoding='utf-8'))
+    except FileNotFoundError:
+        return []
+    if not isinstance(names, list) or any(not isinstance(name, str) for name in names):
+        raise ValueError('Saved recent rooms must be a list of room names.')
+    return names
+
+
+def merge_recent_rooms(names):
+    saved = load_recent_rooms()
+    merged = []
+    seen = set()
+    for name in [*names, *saved]:
+        if isinstance(name, str) and name.strip() and name not in seen:
+            seen.add(name)
+            merged.append(name)
+    if merged != saved:
+        APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        RECENT_ROOMS_PATH.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding='utf-8')
+    return merged
 
 
 def load_app_state():
@@ -18,9 +43,14 @@ def load_app_state():
         return {}
 
 
-def save_app_state(selected_tab):
+def save_app_state(selected_tab=None, start_in_tray=None):
+    data = load_app_state()
+    if selected_tab is not None:
+        data['selected_tab'] = selected_tab
+    if start_in_tray is not None:
+        data['start_in_tray'] = start_in_tray
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    APP_STATE_PATH.write_text(json.dumps({"selected_tab": selected_tab}, indent=2), encoding="utf-8")
+    APP_STATE_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def load_camera_settings():

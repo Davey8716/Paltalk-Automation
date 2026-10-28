@@ -5,7 +5,7 @@ from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
-    QStyle, QSystemTrayIcon, QTabWidget, QVBoxLayout, QWidget,
+    QStyle, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 from . import settings
@@ -132,6 +132,17 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(APP_STYLE)
 
         tabs = QTabWidget()
+        menu_button = QToolButton(tabs)
+        menu_button.setObjectName('settingsMenuButton')
+        menu_button.setText('☰')
+        menu_button.setToolTip('Settings')
+        menu_button.setAccessibleName('Settings')
+        menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        settings_menu = QMenu(menu_button)
+        self.start_in_tray = settings_menu.addAction('Start in tray')
+        self.start_in_tray.setCheckable(True)
+        menu_button.setMenu(settings_menu)
+        tabs.setCornerWidget(menu_button, Qt.Corner.TopRightCorner)
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(38, 32, 38, 32)
@@ -208,13 +219,17 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log)
         tabs.addTab(page, "Room Opener")
         self.create_camera_tab(tabs)
+        self.create_admin_tab(tabs)
         self.setCentralWidget(tabs)
         try:
-            selected_tab = settings.load_app_state().get('selected_tab', 'room_opener')
-            tabs.setCurrentIndex(1 if selected_tab == 'camera_opener' else 0)
+            app_state = settings.load_app_state()
+            selected_tab = app_state.get('selected_tab', 'room_opener')
+            tabs.setCurrentIndex({'room_opener': 0, 'camera_opener': 1, 'admin_actions': 2}.get(selected_tab, 0))
+            self.start_in_tray.setChecked(bool(app_state.get('start_in_tray', False)))
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f'Could not load app state: {exc}')
         tabs.currentChanged.connect(self.save_selected_tab)
+        self.start_in_tray.toggled.connect(self.save_start_in_tray)
 
         self.save_button.clicked.connect(self.save_current_settings)
         self.start_button.clicked.connect(self.toggle_opening)
@@ -239,6 +254,7 @@ class MainWindow(QMainWindow):
     def show_recent_rooms(self):
         if self.recent_rooms_worker:
             return
+        self.log.setFocus(Qt.FocusReason.OtherFocusReason)
         self.recent_rooms_button.setEnabled(False)
         self.recent_rooms_worker = RecentRoomsWorker()
         self.recent_rooms_worker.result.connect(self.recent_rooms_received)
@@ -250,9 +266,12 @@ class MainWindow(QMainWindow):
         self.recent_rooms_button.setEnabled(True)
 
     def recent_rooms_received(self, names, error):
-        if error:
+        try:
+            names = settings.load_recent_rooms() if error else settings.merge_recent_rooms(names)
+        except (OSError, ValueError, TypeError) as exc:
+            QMessageBox.warning(self, "Recently visited", f"Could not read or save recent rooms: {exc}")
+        if error and not names:
             QMessageBox.warning(self, "Recently visited", error)
-            return
         dialog = QDialog(self)
         dialog.setWindowTitle("Recently visited rooms")
         dialog.resize(560, 400)
@@ -262,7 +281,7 @@ class MainWindow(QMainWindow):
         rooms.addItems(names)
         layout.addWidget(rooms)
         if not names:
-            layout.addWidget(QLabel("No recently visited rooms found in the current Paltalk filter."))
+            layout.addWidget(QLabel("No recently visited rooms have been saved."))
         copy_button = QPushButton("Copy selected name")
         copy_button.setFixedSize(200,35)
         copy_button.setEnabled(False)
@@ -301,6 +320,7 @@ class MainWindow(QMainWindow):
             room_action.setEnabled(self.start_button.isEnabled())
         menu.aboutToShow.connect(update_room_action)
         for text, button in (
+            ("Start in tray", self.start_in_tray),
             ("Open rooms when Paltalk starts", self.auto_open_button),
             ("Start cameras when Paltalk starts", self.camera_auto),
         ):
@@ -665,6 +685,14 @@ class MainWindow(QMainWindow):
         else:
             self.close()
 
+    def create_admin_tab(self, tabs):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(38, 32, 38, 32)
+        layout.addWidget(QLabel('Admin actions will be configured here.'))
+        layout.addStretch()
+        tabs.addTab(page, 'Admin Actions')
+
     def create_camera_tab(self, tabs):
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -774,8 +802,14 @@ class MainWindow(QMainWindow):
 
     def save_selected_tab(self, index):
         try:
-            settings.save_app_state('camera_opener' if index == 1 else 'room_opener')
+            settings.save_app_state({0: 'room_opener', 1: 'camera_opener', 2: 'admin_actions'}.get(index, 'room_opener'))
         except OSError as exc:
+            self.log.appendPlainText(f'Could not save app state: {exc}')
+
+    def save_start_in_tray(self, enabled):
+        try:
+            settings.save_app_state(start_in_tray=enabled)
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f'Could not save app state: {exc}')
 
     def add_camera_name(self):

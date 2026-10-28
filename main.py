@@ -36,7 +36,8 @@ def main():
             QMessageBox.information(None, 'Paltalk Automation', 'Paltalk Automation is already running.')
             return 0
         window = MainWindow()
-        window.show()
+        if not window.start_in_tray.isChecked() or window.tray_icon is None:
+            window.show()
         return app.exec()
     finally:
         instance.close()

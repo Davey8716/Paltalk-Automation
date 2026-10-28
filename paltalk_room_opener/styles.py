@@ -8,6 +8,15 @@ APP_STYLE = """
         padding: 14px 28px; margin-right: 2px;
     }
     QTabBar::tab:selected { background: #075b8c; }
+    QToolButton#settingsMenuButton {
+        background: #2a3140; color: white; border: none;
+        font-size: 20px; padding: 8px 14px;
+    }
+    QToolButton#settingsMenuButton:hover { background: #075b8c; }
+    QToolButton#settingsMenuButton::menu-indicator { image: none; }
+    QMenu { background: #2a3140; color: white; border: 1px solid #4b5568; }
+    QMenu::item { padding: 8px 28px; }
+    QMenu::item:selected { background: #075b8c; }
     QLabel, QPushButton, QLineEdit, QDoubleSpinBox, QPlainTextEdit {
         color: white; font-weight: 700;
     }

@@ -3,8 +3,8 @@
 from pathlib import Path
 import re
 
-from PySide6.QtCore import QMimeData, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QDrag
+from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QDesktopServices, QDrag, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
     QGraphicsDropShadowEffect, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
@@ -145,7 +145,14 @@ class MainWindow(QMainWindow):
         tabs = QTabWidget()
         menu_button = QToolButton(tabs)
         menu_button.setObjectName('settingsMenuButton')
-        menu_button.setText('☰')
+        menu_icon = QPixmap(20, 20)
+        menu_icon.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(menu_icon)
+        for y in (3, 9, 15):
+            painter.fillRect(2, y, 16, 3, Qt.GlobalColor.white)
+        painter.end()
+        menu_button.setIcon(QIcon(menu_icon))
+        menu_button.setIconSize(QSize(20, 20))
         menu_button.setToolTip('Settings')
         menu_button.setAccessibleName('Settings')
         menu_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)

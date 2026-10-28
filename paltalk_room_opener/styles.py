@@ -5,7 +5,7 @@ APP_STYLE = """
     QTabWidget::pane { border: 1px solid #3b4252; background: #20252e; }
     QTabBar::tab {
         background: #2a3140; color: white; font-weight: 700;
-        padding: 14px 28px; margin-right: 2px;
+        padding: 17px 28px; margin-right: 2px;
     }
     QTabBar::tab:selected { background: #075b8c; }
     QTabBar::tab:disabled { background: #252932; color: #777e8b; }

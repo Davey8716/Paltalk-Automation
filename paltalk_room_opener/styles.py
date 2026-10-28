@@ -8,6 +8,7 @@ APP_STYLE = """
         padding: 14px 28px; margin-right: 2px;
     }
     QTabBar::tab:selected { background: #075b8c; }
+    QTabBar::tab:disabled { background: #252932; color: #777e8b; }
     QToolButton#settingsMenuButton {
         background: #2a3140; color: white; border: none;
         font-size: 20px; padding: 8px 14px;
@@ -22,6 +23,10 @@ APP_STYLE = """
     }
     QLabel[roomAvailable="false"], QLineEdit[roomAvailable="false"] {
         color: #7d8594;
+    }
+    QLabel#micTimerStatus {
+        background: #11151c; color: white; border: 1px solid #4b5568;
+        border-radius: 5px; padding: 8px;
     }
     QLabel#roomDragHandle { padding: 6px; border-radius: 5px; }
     QLabel#roomDragHandle[dragHighlight="true"] { background: #168ac5; color: white; }

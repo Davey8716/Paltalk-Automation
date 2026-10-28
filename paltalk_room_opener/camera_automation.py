@@ -89,35 +89,39 @@ def _normal(value):
 
 
 def _badge_boxes(image, left, top, right, bottom):
-    """Find compact, filled colored shapes; letter strokes are normally much thinner."""
+    """Find compact colored badges and filled grey administrator circles."""
     crop = image.crop((left, top, right, bottom)).convert('RGB')
     width, height = crop.size
     pixels = crop.load()
-    colored = set()
+    colored, grey = set(), set()
     for y in range(height):
         for x in range(width):
             r, g, b = pixels[x, y]
             if max(r, g, b) >= 120 and max(r, g, b) - min(r, g, b) >= 75:
                 colored.add((x, y))
+            elif 65 <= min(r, g, b) and max(r, g, b) <= 190 and max(r, g, b) - min(r, g, b) <= 18:
+                grey.add((x, y))
     boxes = []
-    while colored:
-        point = colored.pop()
-        stack = [point]
-        component = [point]
-        while stack:
-            x, y = stack.pop()
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    neighbor = (x + dx, y + dy)
-                    if neighbor in colored:
-                        colored.remove(neighbor)
-                        stack.append(neighbor)
-                        component.append(neighbor)
-        xs, ys = zip(*component)
-        x0, x1, y0, y1 = min(xs), max(xs) + 1, min(ys), max(ys) + 1
-        w, h = x1 - x0, y1 - y0
-        if w >= 8 and h >= 8 and len(component) >= 45 and len(component) / (w * h) >= .4:
-            boxes.append((left + x0, top + y0, left + x1, top + y1))
+    for pixels_to_check, is_grey in ((colored, False), (grey, True)):
+        while pixels_to_check:
+            point = pixels_to_check.pop()
+            stack = [point]
+            component = [point]
+            while stack:
+                x, y = stack.pop()
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        neighbor = (x + dx, y + dy)
+                        if neighbor in pixels_to_check:
+                            pixels_to_check.remove(neighbor)
+                            stack.append(neighbor)
+                            component.append(neighbor)
+            xs, ys = zip(*component)
+            x0, x1, y0, y1 = min(xs), max(xs) + 1, min(ys), max(ys) + 1
+            w, h = x1 - x0, y1 - y0
+            compact_grey = not is_grey or (w <= 20 and h <= 20 and .75 <= w / h <= 1.25)
+            if w >= 8 and h >= 8 and compact_grey and len(component) >= 45 and len(component) / (w * h) >= .4:
+                boxes.append((left + x0, top + y0, left + x1, top + y1))
     return sorted(boxes)
 
 

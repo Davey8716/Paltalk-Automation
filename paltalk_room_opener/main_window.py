@@ -1,26 +1,20 @@
 """Main application window."""
 
 from pathlib import Path
+import re
 
 from PySide6.QtCore import QMimeData, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QDrag
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
     QGraphicsDropShadowEffect, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
-    QStyle, QStyledItemDelegate, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
+    QScrollArea, QStyle, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 from . import settings
+from .camera_name_list import CameraNameDelegate, CameraNameList
 from .styles import APP_STYLE
-from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
-
-
-class CameraNameDelegate(QStyledItemDelegate):
-    def initStyleOption(self, option, index):
-        super().initStyleOption(option, index)
-        number = index.data(Qt.ItemDataRole.UserRole)
-        if number is not None:
-            option.text = f'{number}. {option.text}'
+from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
 
 
 class RoomNameField(QLineEdit):
@@ -121,7 +115,10 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Paltalk Automation")
-        self.resize(1000, 720)
+        screen = QApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else None
+        self.resize(1000,
+                    min(950, available.height()) if available else 950)
         self.setMinimumSize(850, 620)
         self.worker = None
         self.close_room_worker = None
@@ -132,6 +129,7 @@ class MainWindow(QMainWindow):
         self.recent_rooms_manual_pending = False
         self.room_states = None
         self.camera_worker = None
+        self.mic_timer_worker = None
         self.chat_reader_worker = None
         self._closing_pending = False
         self._quitting = False
@@ -242,11 +240,14 @@ class MainWindow(QMainWindow):
         tabs.addTab(page, "Room Opener")
         self.create_camera_tab(tabs)
         self.create_admin_tab(tabs)
+        self.create_timer_tab(tabs)
+        tabs.setTabEnabled(2, False)
+        tabs.setTabEnabled(3, False)
         self.setCentralWidget(tabs)
         try:
             app_state = settings.load_app_state()
             selected_tab = app_state.get('selected_tab', 'room_opener')
-            tabs.setCurrentIndex({'room_opener': 0, 'camera_opener': 1, 'admin_actions': 2}.get(selected_tab, 0))
+            tabs.setCurrentIndex({'room_opener': 0, 'camera_opener': 1}.get(selected_tab, 0))
             self.start_in_tray.setChecked(bool(app_state.get('start_in_tray', False)))
             self.update_tray_status(self.start_in_tray.isChecked())
         except (OSError, ValueError, TypeError, AttributeError) as exc:
@@ -778,6 +779,9 @@ class MainWindow(QMainWindow):
         self.camera_restart_pending = False
         self.auto_open_pending = False
         running = False
+        if self.mic_timer_worker and self.mic_timer_worker.isRunning():
+            self.mic_timer_worker.requestInterruption()
+            running = True
         if self.chat_reader_worker and self.chat_reader_worker.isRunning():
             self.chat_reader_worker.requestInterruption()
             running = True
@@ -812,7 +816,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, QApplication.quit)
 
     def _finish_close_when_stopped(self):
-        if ((self.chat_reader_worker and self.chat_reader_worker.isRunning()) or
+        if ((self.mic_timer_worker and self.mic_timer_worker.isRunning()) or
+                (self.chat_reader_worker and self.chat_reader_worker.isRunning()) or
                 (self.camera_worker and self.camera_worker.isRunning()) or
                 (self.worker and self.worker.isRunning()) or
                 (self.close_room_worker and self.close_room_worker.isRunning()) or
@@ -822,6 +827,84 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(100, self._finish_close_when_stopped)
         else:
             self.close()
+
+    def create_timer_tab(self, tabs):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(38, 10, 38, 32)
+        layout.addWidget(QLabel('Time the person shown in Talking Now. Keep the room member list visible and unobscured.'))
+        controls = QHBoxLayout()
+        self.mic_timer_start = QPushButton('Start mic timer')
+        self.mic_timer_stop = QPushButton('Stop mic timer')
+        self.mic_timer_clear = QPushButton('Clear logs')
+        self.mic_timer_stop.setEnabled(False)
+        controls.addWidget(self.mic_timer_start)
+        controls.addWidget(self.mic_timer_stop)
+        controls.addWidget(self.mic_timer_clear)
+        controls.addStretch()
+        layout.addLayout(controls)
+        self.mic_timer_status = QLabel('Start the timer to monitor the visible room.')
+        self.mic_timer_status.setObjectName('micTimerStatus')
+        self.mic_timer_status.setMinimumHeight(48)
+        self.mic_timer_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.mic_timer_status.setWordWrap(True)
+        layout.addWidget(self.mic_timer_status)
+        self.mic_timer_rooms = {}
+        self.mic_timer_logs = []
+        columns = QHBoxLayout()
+        for index in range(3):
+            column = QVBoxLayout()
+            column.addWidget(QLabel(f'Room {index + 1}'))
+            log = QPlainTextEdit()
+            log.setReadOnly(True)
+            log.document().setMaximumBlockCount(2000)
+            column.addWidget(log)
+            self.mic_timer_logs.append(log)
+            columns.addLayout(column)
+        layout.addLayout(columns)
+        tabs.addTab(page, 'Mic Timer')
+        self.mic_timer_start.clicked.connect(self.start_mic_timer)
+        self.mic_timer_stop.clicked.connect(self.stop_mic_timer)
+        self.mic_timer_clear.clicked.connect(self.clear_mic_timer_logs)
+
+    def clear_mic_timer_logs(self):
+        for log in self.mic_timer_logs:
+            log.clear()
+
+    def log_mic_timer_room(self, room, message):
+        room = tuple(room)
+        if room not in self.mic_timer_rooms:
+            if len(self.mic_timer_rooms) >= len(self.mic_timer_logs):
+                self.mic_timer_status.setText('More than three rooms detected; only the first three have logs. Restart the timer to reassign them.')
+                return
+            self.mic_timer_rooms[room] = len(self.mic_timer_rooms)
+        self.mic_timer_logs[self.mic_timer_rooms[room]].appendPlainText(message)
+
+    def start_mic_timer(self):
+        if self.mic_timer_worker:
+            return
+        self.mic_timer_worker = MicTimerWorker()
+        self.mic_timer_rooms.clear()
+        for log in self.mic_timer_logs:
+            log.appendPlainText('— New timer session —')
+        self.mic_timer_worker.message.connect(self.mic_timer_status.setText)
+        self.mic_timer_worker.room_message.connect(self.log_mic_timer_room)
+        self.mic_timer_worker.finished.connect(self.mic_timer_finished)
+        self.mic_timer_start.setEnabled(False)
+        self.mic_timer_stop.setEnabled(True)
+        self.mic_timer_status.setText('Mic timer started; waiting for a confirmed speaker.')
+        self.mic_timer_worker.start()
+
+    def stop_mic_timer(self):
+        if self.mic_timer_worker:
+            self.mic_timer_worker.requestInterruption()
+            self.mic_timer_stop.setEnabled(False)
+
+    def mic_timer_finished(self):
+        self.mic_timer_worker = None
+        self.mic_timer_start.setEnabled(not self._closing_pending)
+        self.mic_timer_stop.setEnabled(False)
+        self.mic_timer_status.setText('Mic timer stopped.')
 
     def create_admin_tab(self, tabs):
         page = QWidget()
@@ -971,6 +1054,9 @@ class MainWindow(QMainWindow):
         self.camera_alphabetical.setObjectName('cameraAlphabetical')
         self.camera_alphabetical.setCheckable(True)
         sort_controls.addWidget(self.camera_alphabetical)
+        self.camera_import = QPushButton('Import text')
+        self.camera_import.setToolTip('Import usernames from a text file, one per line.')
+        sort_controls.addWidget(self.camera_import)
         self.camera_export = QPushButton('Export to text')
         self.camera_export.setToolTip('Export the camera usernames to a text file.')
         self.camera_export_glow = QGraphicsDropShadowEffect(self.camera_export)
@@ -985,13 +1071,16 @@ class MainWindow(QMainWindow):
         self.camera_export_flashes_left = 0
         sort_controls.addWidget(self.camera_export)
         layout.addLayout(sort_controls)
-        self.camera_names = QListWidget()
+        self.camera_names = CameraNameList()
         self.camera_next_order = 1
         self.camera_names.setItemDelegate(CameraNameDelegate(self.camera_names))
         self.camera_names.setObjectName('cameraNames')
         self.camera_names.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.camera_names.customContextMenuRequested.connect(self.camera_name_menu)
-        layout.addWidget(self.camera_names)
+        self.camera_names_scroll = QScrollArea()
+        self.camera_names_scroll.setWidgetResizable(True)
+        self.camera_names_scroll.setWidget(self.camera_names)
+        layout.addWidget(self.camera_names_scroll, 2)
         entry = QHBoxLayout()
         self.camera_entry = QLineEdit()
         self.camera_entry.setPlaceholderText('Exact Paltalk username')
@@ -1037,7 +1126,7 @@ class MainWindow(QMainWindow):
         self.camera_log.setReadOnly(True)
         activity_column.addWidget(self.camera_log)
         output.addLayout(activity_column, 1)
-        layout.addLayout(output)
+        layout.addLayout(output, 1)
         tabs.addTab(page, 'Camera Opener')
         try:
             data = settings.load_camera_settings()
@@ -1064,6 +1153,7 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.camera_log.appendPlainText(f'Could not load camera settings: {exc}')
         add.clicked.connect(self.add_camera_name)
+        self.camera_import.clicked.connect(self.import_camera_names)
         self.camera_export.clicked.connect(self.export_camera_names)
         self.camera_alphabetical.toggled.connect(self.camera_alphabetical_changed)
         self.camera_names.itemChanged.connect(self.camera_name_changed)
@@ -1087,6 +1177,53 @@ class MainWindow(QMainWindow):
         finally:
             self.camera_names.blockSignals(signals_blocked)
         self.camera_next_order = len(items) + 1
+
+    def import_camera_names(self):
+        filename, _ = QFileDialog.getOpenFileName(self, 'Import usernames', '', 'Text files (*.txt);;All files (*)')
+        if not filename:
+            return
+        try:
+            lines = Path(filename).read_text(encoding='utf-8-sig').splitlines()
+        except (OSError, UnicodeError) as exc:
+            QMessageBox.warning(self, 'Import usernames', f'Could not read usernames: {exc}')
+            return
+        existing = {self.camera_names.item(i).text().strip().casefold() for i in range(self.camera_names.count())}
+        names = []
+        for line in lines:
+            name = re.sub(r'^\s*\d+\.\s+', '', line).strip()
+            if name and name.casefold() not in existing:
+                names.append(name)
+                existing.add(name.casefold())
+        if self.camera_names.count() + len(names) > 200:
+            QMessageBox.warning(self, 'Import usernames', 'Import would exceed the 200 username limit. No usernames were added.')
+            return
+        if not names:
+            QMessageBox.information(self, 'Import usernames', 'No new usernames were found.')
+            return
+        previous_order = self.camera_next_order
+        added = []
+        blocked = self.camera_names.blockSignals(True)
+        try:
+            for name in names:
+                self.camera_names.addItem(name)
+                item = self.camera_names.item(self.camera_names.count() - 1)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+                item.setData(Qt.ItemDataRole.UserRole, self.camera_next_order)
+                self.camera_next_order += 1
+                added.append(item)
+            if self.camera_alphabetical.isChecked():
+                self.sort_camera_names(True)
+        finally:
+            self.camera_names.blockSignals(blocked)
+        if not self.save_camera_settings():
+            for item in added:
+                self.camera_names.takeItem(self.camera_names.row(item))
+            self.camera_next_order = previous_order
+            return
+        if self.camera_worker:
+            self.camera_worker.update_names(self.camera_username_list())
+        self.remind_camera_export()
+        self.camera_log.appendPlainText(f'Imported {len(names)} username(s).')
 
     def export_camera_names(self):
         names = [(self.camera_names.item(i).data(Qt.ItemDataRole.UserRole) or i + 1,
@@ -1162,7 +1299,7 @@ class MainWindow(QMainWindow):
 
     def save_selected_tab(self, index):
         try:
-            settings.save_app_state({0: 'room_opener', 1: 'camera_opener', 2: 'admin_actions'}.get(index, 'room_opener'))
+            settings.save_app_state({0: 'room_opener', 1: 'camera_opener', 2: 'admin_actions', 3: 'timer'}.get(index, 'room_opener'))
         except OSError as exc:
             self.log.appendPlainText(f'Could not save app state: {exc}')
 
@@ -1195,6 +1332,7 @@ class MainWindow(QMainWindow):
                 self.sort_camera_names(True)
             self.camera_names.setCurrentItem(item)
             self.camera_names.scrollToItem(item)
+            self.camera_names_scroll.ensureVisible(0, self.camera_names.visualItemRect(item).center().y())
             self.camera_entry.clear()
             self.update_camera_names()
             self.remind_camera_export()

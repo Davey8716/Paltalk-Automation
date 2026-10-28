@@ -77,6 +77,17 @@ class CameraTests(unittest.TestCase):
         self.assertEqual(_row_text(words, boxes[0][0]), 'FATPIZZA')
         self.assertIsNone(_row_text(words, 70))
 
+    def test_grey_admin_badge_is_excluded_from_username(self):
+        image = Image.new('RGB', (160, 24), 'white')
+        draw = ImageDraw.Draw(image)
+        draw.ellipse((82, 5, 95, 18), fill=(128, 128, 128))
+        draw.text((85, 6), 'A', fill='white')
+        boxes = _badge_boxes(image, 0, 0, 150, 24)
+        self.assertEqual(len(boxes), 1)
+        words = [{'text': 'andrew777a', 'left': 5, 'right': 78},
+                 {'text': 'O', 'left': 83, 'right': 94}]
+        self.assertEqual(_row_text(words, boxes[0][0]), 'andrew777a')
+
     def test_exact_readings_match_saved_names(self):
         rows = [
             (('TungfooMaster1',), 'available', object(), 10),

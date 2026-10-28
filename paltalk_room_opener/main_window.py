@@ -294,6 +294,21 @@ class MainWindow(QMainWindow):
         self.tray_icon.setToolTip("Paltalk Automation")
         menu = QMenu(self)
         menu.addAction("Open Paltalk Automation", self.restore_from_tray)
+        room_action = menu.addAction("Open rooms")
+        room_action.triggered.connect(self.start_button.click)
+        def update_room_action():
+            room_action.setText(self.start_button.text())
+            room_action.setEnabled(self.start_button.isEnabled())
+        menu.aboutToShow.connect(update_room_action)
+        for text, button in (
+            ("Open rooms when Paltalk starts", self.auto_open_button),
+            ("Start cameras when Paltalk starts", self.camera_auto),
+        ):
+            action = menu.addAction(text)
+            action.setCheckable(True)
+            action.setChecked(button.isChecked())
+            action.toggled.connect(button.setChecked)
+            button.toggled.connect(action.setChecked)
         menu.addSeparator()
         menu.addAction("Quit", self.quit_application)
         self.tray_icon.setContextMenu(menu)
@@ -383,7 +398,7 @@ class MainWindow(QMainWindow):
             self.auto_open_pending = False
             self.auto_open_attempts_remaining = 0
             self.auto_open_handled_for_session = True
-        self.worker = RoomWorker(names, self.delay.value())
+        self.worker = RoomWorker(names, self.delay.value(), automatic=automatic)
         self.worker.message.connect(self.log.appendPlainText)
         if automatic:
             self.worker.completed.connect(self.automatic_open_finished)
@@ -452,7 +467,7 @@ class MainWindow(QMainWindow):
     def automatic_open_finished(self, queued_room_count):
         if not self.auto_open_pending:
             return
-        if queued_room_count > 0:
+        if queued_room_count > 0 or queued_room_count == RoomWorker.ALREADY_OPEN:
             self.auto_open_pending = False
             self.auto_open_attempts_remaining = 0
             self.auto_open_handled_for_session = True
@@ -460,14 +475,16 @@ class MainWindow(QMainWindow):
             return
         if self.auto_open_attempts_remaining > 0 and self.auto_open_button.isChecked():
             attempt = self.AUTO_OPEN_MAX_ATTEMPTS - self.auto_open_attempts_remaining + 1
-            self.log.appendPlainText(
-                f"Rooms view is not ready yet. Retrying automatic opening ({attempt}/{self.AUTO_OPEN_MAX_ATTEMPTS})..."
-            )
+            reason = ("Room status is unavailable" if queued_room_count == RoomWorker.STATE_UNAVAILABLE
+                      else "Rooms view is not ready yet")
+            self.log.appendPlainText(f"{reason}. Retrying automatic opening ({attempt}/{self.AUTO_OPEN_MAX_ATTEMPTS})...")
             QTimer.singleShot(self.AUTO_OPEN_DELAY_MS, self.start_automatically)
         else:
             self.auto_open_pending = False
             self.auto_open_handled_for_session = True
-            self.log.appendPlainText("Automatic opening stopped: no configured room tiles became available.")
+            reason = ("room status remained unavailable" if queued_room_count == RoomWorker.STATE_UNAVAILABLE
+                      else "no configured room tiles became available")
+            self.log.appendPlainText(f"Automatic opening stopped: {reason}.")
 
     def selected_mode(self):
         return "vip" if self.vip_button.isChecked() else "regular"
@@ -652,7 +669,8 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(38, 32, 38, 32)
-        layout.addWidget(QLabel('Monitor up to 200 usernames in the visible On Cam list of the current room.'))
+        layout.addWidget(QLabel('Monitor up to 200 usernames in the visible On Cam list of the rooms you enter.\n' \
+        'This is a global camera monitor across rooms and is not room specific.'))
         sort_controls = QHBoxLayout()
         sort_controls.addStretch()
         self.camera_alphabetical = QPushButton('Alphabetical')
@@ -775,6 +793,8 @@ class MainWindow(QMainWindow):
             self.camera_names.blockSignals(False)
             if self.camera_alphabetical.isChecked():
                 self.sort_camera_names(True)
+            self.camera_names.setCurrentItem(item)
+            self.camera_names.scrollToItem(item)
             self.camera_entry.clear()
 
     def remove_camera_name(self):

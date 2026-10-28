@@ -9,15 +9,39 @@ from .camera_automation import watch_cameras
 class RoomWorker(QThread):
     message = Signal(str)
     completed = Signal(int)
+    STATE_UNAVAILABLE = -2
+    ALREADY_OPEN = -3
 
-    def __init__(self, names, delay):
+    def __init__(self, names, delay, automatic=False):
         super().__init__()
         self.names = names
         self.delay = delay
+        self.automatic = automatic
 
     def run(self):
         try:
-            queued_rooms = open_rooms(self.names, self.delay, self.message.emit, self.isInterruptionRequested)
+            names = self.names
+            if self.automatic:
+                try:
+                    states = room_states(names)
+                except Exception as exc:
+                    self.message.emit(f"Could not determine open room status: {exc}")
+                    self.completed.emit(self.STATE_UNAVAILABLE)
+                    return
+                unknown = [name for name in names if states is None or name not in states]
+                if unknown:
+                    self.message.emit(f"Could not determine open room status: {', '.join(unknown)}.")
+                    self.completed.emit(self.STATE_UNAVAILABLE)
+                    return
+                names = [name for name in names if not states[name]]
+                for name in self.names:
+                    if states[name]:
+                        self.message.emit(f"Already open, skipping room: {name}")
+                if not names:
+                    self.message.emit("All configured rooms are already open.")
+                    self.completed.emit(self.ALREADY_OPEN)
+                    return
+            queued_rooms = open_rooms(names, self.delay, self.message.emit, self.isInterruptionRequested)
             self.completed.emit(queued_rooms)
         except Exception as exc:
             self.message.emit(f"Error: {exc}")

@@ -1,0 +1,20 @@
+"filename", "language", "pip requirements", "Python", "Markdown", "PowerShell", "comment", "blank", "total"
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\README.md", "Markdown", 0, 0, 29, 0, 0, 22, 51
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\main.py", "Python", 0, 33, 0, 0, 2, 12, 47
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\__init__.py", "Python", 0, 0, 0, 0, 1, 1, 2
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\automation.py", "Python", 0, 192, 0, 0, 8, 23, 223
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\camera_automation.py", "Python", 0, 361, 0, 0, 15, 35, 411
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\main_window.py", "Python", 0, 779, 0, 0, 4, 80, 863
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\settings.py", "Python", 0, 42, 0, 0, 4, 18, 64
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\single_instance.py", "Python", 0, 17, 0, 0, 1, 5, 23
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\styles.py", "Python", 0, 45, 0, 0, 1, 2, 48
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\windows_ocr.ps1", "PowerShell", 0, 0, 0, 40, 0, 1, 41
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\paltalk_room_opener\worker.py", "Python", 0, 68, 0, 0, 1, 26, 95
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\requirements.txt", "pip requirements", 4, 0, 0, 0, 0, 1, 5
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\tests\test_camera.py", "Python", 0, 176, 0, 0, 0, 21, 197
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\tests\test_close_room.py", "Python", 0, 50, 0, 0, 0, 12, 62
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\tests\test_launcher.py", "Python", 0, 18, 0, 0, 0, 5, 23
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\tests\test_room_drag_handle.py", "Python", 0, 38, 0, 0, 0, 11, 49
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\tests\test_room_highlight.py", "Python", 0, 51, 0, 0, 0, 13, 64
+"c:\Users\davey\Desktop\Projects\Paltalk Automation\tests\test_single_instance.py", "Python", 0, 23, 0, 0, 0, 4, 27
+"Total", "-", 4, 1893, 29, 40, 37, 292, 2295

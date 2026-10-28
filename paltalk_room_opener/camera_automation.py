@@ -70,7 +70,7 @@ def _camera_state(image, x, y, width, height):
     """Paltalk currently draws available cameras blue and opened views green."""
     crop = image.crop((x, y, x + width, y + height)).convert('RGB')
     blue = green = 0
-    for r, g, b in crop.getdata():
+    for r, g, b in crop.get_flattened_data():
         if b > 130 and b > r * 1.3 and b > g * 1.05:
             blue += 1
         if g > 110 and g > r * 1.35 and g > b * 1.2:

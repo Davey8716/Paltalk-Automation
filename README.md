@@ -6,15 +6,15 @@ A Windows desktop app that invokes up to five named Paltalk room tiles in order.
 
 ## Setup
 
-Install Python 3.10 or newer, then in PowerShell from this folder run:
+Install the 64-bit CPython 3.14 release, then in PowerShell from this folder run:
 
 ```powershell
-python -m venv .venv
+& "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe" -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
 .\.venv\Scripts\python main.py
 ```
 
-If `main.py` is launched with a different Python that lacks `pythonnet`, it will use the project's `.venv` automatically when that environment exists.
+The 3.14 interpreter is required because this project depends on binary packages for Qt, image capture, process inspection, and .NET UI Automation. The specified package versions ship Python 3.14-compatible Windows wheels. If `main.py` is launched with a different Python that lacks `pythonnet`, it will use the project's `.venv` automatically when that environment exists.
 
 The selected tab is restored on startup and stored in `%APPDATA%\PaltalkRoomOpener\app_state.json`.
 

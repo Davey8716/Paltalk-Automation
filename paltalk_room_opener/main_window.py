@@ -122,6 +122,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(850, 620)
         self.worker = None
         self.close_room_worker = None
+        self.closing_other_room = None
         self.room_state_worker = None
         self.paltalk_process_worker = None
         self._pending_single_start = False
@@ -742,7 +743,7 @@ class MainWindow(QMainWindow):
             button.setToolTip(f"{action} the Paltalk room in Room {index + 1}" if known else "Restore Paltalk and check the room before opening")
             self.set_button_enabled(button, bool(
                 name and field.property('roomAvailable') is not False
-                and not self.worker and not self.close_room_worker
+                and not self.worker and (not self.close_room_worker or getattr(self, 'closing_other_room', None))
             ))
         if hasattr(self, 'other_rooms_layout'):
             self.update_other_rooms()
@@ -751,39 +752,48 @@ class MainWindow(QMainWindow):
                 self.room_states is not None
                 and (any(self.room_states.get(field.text().strip(), False) for field in self.rooms if field.text().strip())
                      or bool(getattr(self, 'other_open_names', [])))
-                and not self.worker and not self.close_room_worker
+                and not self.worker and (not self.close_room_worker or getattr(self, 'closing_other_room', None))
             ))
 
     def update_other_rooms(self):
         configured = {field.text().strip() for field in self.rooms
                       if field.text().strip() and field.property('roomAvailable') is not False}
         names = list(dict.fromkeys(name for name in self.other_open_names if name not in configured))
+        rows = {}
         while self.other_rooms_layout.count():
-            item = self.other_rooms_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            row = self.other_rooms_layout.takeAt(0).widget()
+            if row:
+                rows[row.property('roomName')] = row
         for name in names:
-            row = QWidget()
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(0, 0, 0, 0)
-            field = QLineEdit(name)
-            field.setReadOnly(True)
-            field.setProperty('roomOpen', True)
-            button = QPushButton('Close')
-            button.setAccessibleName(f'Close {name}')
-            button.setEnabled(not self.worker and not self.close_room_worker)
-            button.clicked.connect(lambda checked=False, room=name: self.close_other_room(room))
-            row_layout.addWidget(field, 1)
-            row_layout.addWidget(button)
+            row = rows.pop(name, None)
+            if row is None:
+                row = QWidget()
+                row.setProperty('roomName', name)
+                row_layout = QHBoxLayout(row)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                field = QLineEdit(name)
+                field.setReadOnly(True)
+                field.setProperty('roomOpen', True)
+                button = QPushButton('Close')
+                button.setAccessibleName(f'Close {name}')
+                button.clicked.connect(lambda checked=False, room=name: self.close_other_room(room))
+                row_layout.addWidget(field, 1)
+                row_layout.addWidget(button)
+            button = row.findChild(QPushButton)
+            closing_name = getattr(self, 'closing_other_room', None)
+            button.setEnabled(not self.worker and (not self.close_room_worker or
+                              bool(closing_name and closing_name != name)))
             self.other_rooms_layout.addWidget(row)
+        for row in rows.values():
+            row.deleteLater()
 
     def close_other_room(self, name):
         if self.worker or self.close_room_worker:
             return
+        self.closing_other_room = name
         self.close_room_worker = CloseRoomWorker(name)
         self.close_room_worker.message.connect(self.log.appendPlainText)
         self.close_room_worker.finished.connect(self.close_room_finished)
-        self.set_button_enabled(self.start_button, False)
         self.update_room_buttons()
         self.close_room_worker.start()
 
@@ -827,6 +837,7 @@ class MainWindow(QMainWindow):
 
     def close_room_finished(self):
         self.close_room_worker = None
+        self.closing_other_room = None
         self.start_button.setEnabled(True)
         self.update_room_buttons()
         self.refresh_room_states()

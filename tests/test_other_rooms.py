@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-from PySide6.QtWidgets import QApplication, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QVBoxLayout, QWidget
 from paltalk_room_opener.automation import _discovered_room_names
 from paltalk_room_opener.main_window import MainWindow
 
@@ -46,6 +46,25 @@ class OtherRoomsTests(unittest.TestCase):
         MainWindow.room_states_received(window, None)
         self.assertEqual(window.other_open_names, ['Extra'])
         self.assertEqual(window.room_states, {'One': True})
+
+    def test_refresh_reuses_rows_and_only_disables_room_being_closed(self):
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        window = SimpleNamespace(rooms=[], other_open_names=['First', 'Second'],
+                                 other_rooms_layout=layout, worker=None, close_room_worker=None,
+                                 closing_other_room=None, close_other_room=lambda name: None)
+        MainWindow.update_other_rooms(window)
+        first, second = [layout.itemAt(i).widget() for i in range(2)]
+        window.close_room_worker = object()
+        window.closing_other_room = 'First'
+        MainWindow.update_other_rooms(window)
+        self.assertIs(layout.itemAt(0).widget(), first)
+        self.assertIs(layout.itemAt(1).widget(), second)
+        self.assertFalse(first.findChild(QPushButton).isEnabled())
+        self.assertTrue(second.findChild(QPushButton).isEnabled())
+        window.other_open_names = ['Second']
+        MainWindow.update_other_rooms(window)
+        self.assertIs(layout.itemAt(0).widget(), second)
 
     def test_regular_mode_shows_open_inactive_rooms_and_vip_hides_them(self):
         container = QWidget()

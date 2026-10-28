@@ -270,12 +270,12 @@ class MainWindow(QMainWindow):
         self.setup_tray()
 
     def show_recent_rooms(self):
+        self.log.setFocus(Qt.FocusReason.OtherFocusReason)
         if self.recent_rooms_worker:
             if self.recent_rooms_worker.automatic:
                 self.recent_rooms_manual_pending = True
                 self.recent_rooms_button.setEnabled(False)
             return
-        self.log.setFocus(Qt.FocusReason.OtherFocusReason)
         self.recent_rooms_button.setEnabled(False)
         self.start_recent_rooms_scan(automatic=False)
 
@@ -317,17 +317,47 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Recently visited", error)
         dialog = QDialog(self)
         dialog.setWindowTitle("Recently visited rooms")
+        font = dialog.font()
+        font.setBold(True)
+        dialog.setFont(font)
         dialog.resize(560, 400)
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel("Select a room and click Copy, or double-click its name."))
+        alphabetical = QPushButton('Alphabetical')
+        alphabetical.setFixedSize(150,35)
+        alphabetical.setCheckable(True)
+        try:
+            alphabetical.setChecked(bool(settings.load_app_state().get('recent_rooms_alphabetical', False)))
+        except (OSError, ValueError, TypeError) as exc:
+            self.log.appendPlainText(f'Could not load app state: {exc}')
+        layout.addWidget(alphabetical)
         rooms = QListWidget()
-        rooms.addItems(names)
+        rooms.setStyleSheet('QListWidget { font-weight: bold; }')
+        rooms.addItems(sorted(names, key=str.casefold) if alphabetical.isChecked() else names)
         layout.addWidget(rooms)
         if not names:
             layout.addWidget(QLabel("No recently visited rooms have been saved."))
         copy_button = QPushButton("Copy selected name")
         copy_button.setFixedSize(200,35)
         copy_button.setEnabled(False)
+        def change_sort(enabled):
+            try:
+                settings.save_app_state(recent_rooms_alphabetical=enabled)
+            except (OSError, ValueError, TypeError) as exc:
+                alphabetical.blockSignals(True)
+                alphabetical.setChecked(not enabled)
+                alphabetical.blockSignals(False)
+                QMessageBox.warning(dialog, 'Recently visited', f'Could not save sort preference: {exc}')
+                return
+            selected = rooms.currentItem().text() if rooms.currentItem() else None
+            rooms.clear()
+            rooms.addItems(sorted(names, key=str.casefold) if enabled else names)
+            if selected is not None:
+                matches = rooms.findItems(selected, Qt.MatchFlag.MatchExactly)
+                if matches:
+                    rooms.setCurrentItem(matches[0])
+            copy_button.setEnabled(rooms.currentItem() is not None)
+        alphabetical.toggled.connect(change_sort)
         feedback_timer = QTimer(dialog)
         feedback_timer.setSingleShot(True)
         def clear_copy_feedback():

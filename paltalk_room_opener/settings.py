@@ -94,12 +94,14 @@ def load_app_state():
         return {}
 
 
-def save_app_state(selected_tab=None, start_in_tray=None):
+def save_app_state(selected_tab=None, start_in_tray=None, recent_rooms_alphabetical=None):
     data = load_app_state()
     if selected_tab is not None:
         data['selected_tab'] = selected_tab
     if start_in_tray is not None:
         data['start_in_tray'] = start_in_tray
+    if recent_rooms_alphabetical is not None:
+        data['recent_rooms_alphabetical'] = recent_rooms_alphabetical
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     APP_STATE_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 

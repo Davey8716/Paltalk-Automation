@@ -409,6 +409,7 @@ class CameraWorker(QThread):
     message = Signal(str)
     invoked = Signal(str)
     failed = Signal(str)
+    live_status = Signal(object)
 
     def __init__(self, names):
         super().__init__()
@@ -427,6 +428,7 @@ class CameraWorker(QThread):
                 self.run_helper()
             except Exception as exc:
                 if not self.isInterruptionRequested():
+                    self.live_status.emit([])
                     self.message.emit(f'Camera watcher: {exc} Restarting monitoring shortly.')
             for _ in range(20):
                 if self.isInterruptionRequested():
@@ -481,7 +483,10 @@ class CameraWorker(QThread):
                 try:
                     event = json.loads(line.decode('utf-8'))
                     kind, value = event['kind'], event['value']
-                    if not isinstance(value, str):
+                    if kind == 'live_status':
+                        if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+                            raise ValueError('invalid live status')
+                    elif not isinstance(value, str):
                         raise ValueError('invalid event value')
                 except (ValueError, KeyError, TypeError, UnicodeError) as exc:
                     raise RuntimeError('Invalid response from camera helper.') from exc
@@ -494,6 +499,8 @@ class CameraWorker(QThread):
                     self.invoked.emit(value)
                 elif kind == 'failed':
                     self.failed.emit(value)
+                elif kind == 'live_status':
+                    self.live_status.emit(value)
                 elif kind == 'error':
                     raise RuntimeError(value)
         finally:

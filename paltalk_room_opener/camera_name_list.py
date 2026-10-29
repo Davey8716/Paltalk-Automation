@@ -3,8 +3,10 @@
 # Test data: [f'Test_User_{number:03d}' for number in range(21, 201)]
 
 from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QAbstractItemView, QListWidget, QStyledItemDelegate
 
+LIVE_ROLE = Qt.ItemDataRole.UserRole + 1
 
 class CameraNameDelegate(QStyledItemDelegate):
     def initStyleOption(self, option, index):
@@ -12,6 +14,9 @@ class CameraNameDelegate(QStyledItemDelegate):
         number = index.data(Qt.ItemDataRole.UserRole)
         if number is not None:
             option.text = f'{number}. {option.text}'
+        if index.data(LIVE_ROLE):
+            option.text = f'● {option.text}'
+            option.palette.setColor(option.palette.ColorRole.Text, QColor('#48df85'))
 
 
 class CameraNameList(QListWidget):

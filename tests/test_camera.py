@@ -246,6 +246,20 @@ class CameraTests(unittest.TestCase):
                           current_names=lambda: list(names))
         self.assertEqual(scanner.opened, ['Bob'])
 
+    def test_live_status_tracks_only_confirmed_visible_cameras(self):
+        class Scanner:
+            room_identity = (1,)
+            ocr_lines = []
+            ocr_comparisons = []
+            def scan(self):
+                return [(('Alice',), 'open', object(), 10, 'On Cam'),
+                        (('Bob',), 'unknown', object(), 30, 'On Cam')]
+        snapshots = []
+        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=Scanner()):
+            watch_cameras(['Alice', 'Bob', 'Carol'], lambda _: None, lambda: bool(snapshots),
+                          live_status=lambda names: snapshots.append(names))
+        self.assertEqual(snapshots, [['Alice']])
+
 
 if __name__ == '__main__':
     unittest.main()

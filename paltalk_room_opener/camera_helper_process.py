@@ -36,7 +36,8 @@ def main():
     try:
         watch_cameras(names, lambda value: send('message', value), lambda: False,
                       lambda value: send('invoked', value), lambda value: send('failed', value),
-                      lambda value: send('progress', value), current_names)
+                      lambda value: send('progress', value), current_names,
+                      lambda value: send('live_status', value))
     except Exception as exc:
         send('error', str(exc) or type(exc).__name__)
 

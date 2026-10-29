@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from . import settings
-from .camera_name_list import CameraNameDelegate, CameraNameList
+from .camera_name_list import CameraNameDelegate, CameraNameList, LIVE_ROLE
 from .foreground import ForegroundTracker
 from .styles import APP_STYLE
 from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
@@ -333,15 +333,14 @@ class MainWindow(QMainWindow):
         self.create_advert_tab(tabs)
         self.create_admin_tab(tabs)
         self.create_timer_tab(tabs)
-        tabs.setTabEnabled(3, False)
-        tabs.setTabEnabled(4, False)
         self.setCentralWidget(tabs)
         # Measure after the inherited stylesheet has been applied to the button.
         self.start_button.setMinimumWidth(self.start_button.sizeHint().width())
         try:
             app_state = settings.load_app_state()
             selected_tab = app_state.get('selected_tab', 'room_opener')
-            tabs.setCurrentIndex({'room_opener': 0, 'camera_opener': 1, 'advert_blocker': 2}.get(selected_tab, 0))
+            tabs.setCurrentIndex({'room_opener': 0, 'camera_opener': 1, 'advert_blocker': 2,
+                                  'admin_actions': 3, 'timer': 4}.get(selected_tab, 0))
             self.start_in_tray.setChecked(bool(app_state.get('start_in_tray', False)))
             self.update_tray_status(self.start_in_tray.isChecked())
             self.advert_toggle.setChecked(app_state.get('advert_overlay_enabled') is True)
@@ -1284,7 +1283,7 @@ class MainWindow(QMainWindow):
         self.camera_names.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.camera_names.customContextMenuRequested.connect(self.camera_name_menu)
         self.camera_names.deleteRequested.connect(self.remove_camera_name)
-        self.camera_names.setToolTip('Drag to select usernames. Use Ctrl or Shift to select more, then press Delete or Remove selected.')
+        self.camera_names.setToolTip('A green dot marks a live camera detected in the visible room while monitoring. Drag to select usernames; press Delete or Remove selected to remove them.')
         self.camera_names_scroll = QScrollArea()
         self.camera_names_scroll.setWidgetResizable(True)
         self.camera_names_scroll.setWidget(self.camera_names)
@@ -1510,6 +1509,11 @@ class MainWindow(QMainWindow):
             self.camera_names.addItem(item)
 
     def camera_name_changed(self, _item):
+        blocked = self.camera_names.blockSignals(True)
+        try:
+            _item.setData(LIVE_ROLE, False)
+        finally:
+            self.camera_names.blockSignals(blocked)
         if self.camera_alphabetical.isChecked():
             self.sort_camera_names(True)
         self.update_camera_names()
@@ -1517,6 +1521,18 @@ class MainWindow(QMainWindow):
     def update_camera_names(self):
         if self.save_camera_settings() and self.camera_worker:
             self.camera_worker.update_names(self.camera_username_list())
+
+    def update_camera_live_status(self, names):
+        live = {name.strip().casefold() for name in names}
+        blocked = self.camera_names.blockSignals(True)
+        try:
+            for i in range(self.camera_names.count()):
+                item = self.camera_names.item(i)
+                is_live = item.text().strip().casefold() in live
+                if bool(item.data(LIVE_ROLE)) != is_live:
+                    item.setData(LIVE_ROLE, is_live)
+        finally:
+            self.camera_names.blockSignals(blocked)
 
     def camera_alphabetical_changed(self, enabled):
         self.sort_camera_names(enabled)
@@ -1666,6 +1682,7 @@ class MainWindow(QMainWindow):
         self.camera_worker.message.connect(self.camera_log.appendPlainText)
         self.camera_worker.invoked.connect(self.camera_invoked_log.appendPlainText)
         self.camera_worker.failed.connect(self.camera_failed_log.appendPlainText)
+        self.camera_worker.live_status.connect(self.update_camera_live_status)
         self.camera_worker.finished.connect(self.cameras_finished)
         self.camera_start.setEnabled(False)
         self.camera_stop.setEnabled(True)
@@ -1674,12 +1691,14 @@ class MainWindow(QMainWindow):
 
     def stop_cameras(self):
         self.camera_restart_pending = False
+        self.update_camera_live_status([])
         if self.camera_worker:
             self.camera_worker.requestInterruption()
             self.camera_stop.setEnabled(False)
             self.camera_log.appendPlainText('Stopping camera monitoring...')
 
     def cameras_finished(self):
+        self.update_camera_live_status([])
         self.camera_worker = None
         self.camera_start.setEnabled(True)
         self.camera_stop.setEnabled(False)

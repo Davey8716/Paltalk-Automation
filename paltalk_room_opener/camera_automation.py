@@ -365,13 +365,15 @@ class CameraScanner:
         return True
 
 
-def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None, current_names=None):
+def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None, current_names=None, live_status=None):
     if invoked is None:
         invoked = log
     if failed is None:
         failed = log
     if progress is None:
         progress = lambda stage: None
+    if live_status is None:
+        live_status = lambda names: None
     progress('starting camera scanner')
     scanner = CameraScanner()
     scanner.stopped = stopped
@@ -397,6 +399,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
             if last_error:
                 log('Camera list is available again.')
                 last_error = None
+            live_names = []
             for name in names:
                 if stopped():
                     break
@@ -428,6 +431,8 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                     status = 'camera icon not recognized'
                 else:
                     status = matches[0][1]
+                if status in ('available', 'open'):
+                    live_names.append(name)
                 if reported.get(name) != status:
                     if status not in ('available', 'open'):
                         failed(f'{name}: {status}.')
@@ -449,9 +454,12 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                         time.sleep(.1)
                 else:
                     failed(f'Skipped {name}: the row changed or could not be verified.')
+            if not stopped():
+                live_status(live_names)
         except _ScanStopped:
             break
         except Exception as exc:
+            live_status([])
             message = _camera_error_message(exc)
             if message != last_error:
                 log(f'Camera watcher: {message}')

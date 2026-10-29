@@ -71,6 +71,16 @@ class CameraHelperTests(unittest.TestCase):
             worker.run_helper(timeout=0.5)
         self.assertEqual(values, [('message', 'activity'), ('invoked', 'opened'), ('failed', 'missed')])
 
+    def test_live_status_is_forwarded(self):
+        code = ("import json,time; print(json.dumps({'kind':'live_status','value':['Alice']}),flush=True); "
+                "time.sleep(30)")
+        worker = CameraWorker(['Alice'])
+        values = []
+        worker.live_status.connect(values.append)
+        with self.launch_script(code), self.assertRaisesRegex(RuntimeError, 'Timed out'):
+            worker.run_helper(timeout=0.5)
+        self.assertEqual(values, [['Alice']])
+
     def test_stop_terminates_helper_and_ocr_child(self):
         code = ("import json,subprocess,sys,time; "
                 "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); "

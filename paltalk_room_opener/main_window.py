@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from . import settings
 from .camera_name_list import CameraNameDelegate, CameraNameList
+from .foreground import ForegroundTracker
 from .styles import APP_STYLE
 from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
 from paltalk_adblocker.overlay import AdvertOverlay
@@ -171,6 +172,7 @@ class MainWindow(QMainWindow):
         self._closing_pending = False
         self._quitting = False
         self.tray_icon = None
+        self.foreground_tracker = ForegroundTracker()
         self.camera_restart_pending = False
         self.camera_auto_handled = False
         self.auto_open_pending = False
@@ -510,9 +512,11 @@ class MainWindow(QMainWindow):
         self.activateWindow()
 
     def tray_activated(self, reason):
-        if reason in (QSystemTrayIcon.ActivationReason.Trigger,
-                      QSystemTrayIcon.ActivationReason.DoubleClick):
-            self.restore_from_tray()
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            if self.isVisible() and not self.isMinimized() and self.foreground_tracker.is_foreground(self):
+                self.hide()
+            else:
+                self.restore_from_tray()
 
     def quit_application(self):
         self._quitting = True
@@ -980,6 +984,7 @@ class MainWindow(QMainWindow):
                 self.camera_log.appendPlainText('Stopping background work before closing...')
                 QTimer.singleShot(100, self._finish_close_when_stopped)
             return
+        self.foreground_tracker.close()
         if self.tray_icon is not None:
             self.tray_icon.hide()
         event.accept()

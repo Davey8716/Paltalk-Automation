@@ -381,6 +381,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))
     last_error = None
     attempts = {}
+    pending = {}
     previous_room = None
     reported = {}
     diagnostic_reported = False
@@ -389,8 +390,16 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
         try:
             if current_names is not None:
                 names = list(dict.fromkeys(name.strip() for name in current_names() if name.strip()))
+            active_keys = {_normal(name) for name in names}
+            for key in list(pending):
+                if key not in active_keys:
+                    attempted_name, _, _ = pending.pop(key)
+                    failed(f'{attempted_name}: camera opening could not be confirmed because the username was removed.')
             rows = scanner.scan()
             if scanner.room_identity != previous_room:
+                for attempted_name, _, _ in pending.values():
+                    failed(f'{attempted_name}: camera opening could not be confirmed because the room changed.')
+                pending.clear()
                 previous_room = scanner.room_identity
                 attempts.clear()
                 reported.clear()
@@ -437,16 +446,28 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                     if status not in ('available', 'open'):
                         failed(f'{name}: {status}.')
                     reported[name] = status
+                key = _normal(name)
+                if key in pending:
+                    attempted_name, room, deadline = pending[key]
+                    if status == 'open' and scanner.room_identity == room:
+                        invoked(f'{attempted_name}: camera opening confirmed by the green open-view icon.')
+                        del pending[key]
+                    elif time.monotonic() >= deadline:
+                        failed(f'{attempted_name}: camera button was invoked, but opening could not be confirmed.')
+                        del pending[key]
+                        attempts[key] = time.monotonic()
+                    else:
+                        continue
                 if status != 'available':
                     continue
-                key = _normal(name)
                 if time.monotonic() - attempts.get(key, 0) < 2:
                     continue
                 attempts[key] = time.monotonic()
                 def name_removed():
                     return stopped() or (current_names is not None and name not in current_names())
                 if scanner.open_if_available(name, name_removed, current_names or latest_names):
-                    invoked(f'Invoked camera button for {name}; check the video view to confirm it opened.')
+                    pending[key] = (name, scanner.room_identity, time.monotonic() + 5)
+                    log(f'Invoked camera button for {name}; waiting for confirmation.')
                     # Let Paltalk finish opening the view before invoking another.
                     for _ in range(10):
                         if stopped():
@@ -459,6 +480,9 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
         except _ScanStopped:
             break
         except Exception as exc:
+            for attempted_name, _, _ in pending.values():
+                failed(f'{attempted_name}: camera button was invoked, but opening could not be confirmed because the scan failed.')
+            pending.clear()
             live_status([])
             message = _camera_error_message(exc)
             if message != last_error:

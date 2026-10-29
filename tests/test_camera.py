@@ -260,6 +260,53 @@ class CameraTests(unittest.TestCase):
                           live_status=lambda names: snapshots.append(names))
         self.assertEqual(snapshots, [['Alice']])
 
+    def test_opening_confirmed_only_after_fresh_green_icon(self):
+        class Scanner:
+            room_identity = (1,)
+            ocr_lines = []
+            ocr_comparisons = []
+            scans = 0
+            opens = 0
+            def scan(self):
+                self.scans += 1
+                return [(('Alice',), 'available' if self.scans == 1 else 'open', object(), 10, 'On Cam')]
+            def open_if_available(self, *args):
+                self.opens += 1
+                return True
+        scanner = Scanner()
+        confirmed, failed, clock = [], [], [10.0]
+        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
+             patch('paltalk_room_opener.camera_automation.time.monotonic', side_effect=lambda: clock[0]), \
+             patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=lambda t: clock.__setitem__(0, clock[0] + t)):
+            watch_cameras(['Alice'], lambda _: None, lambda: bool(confirmed),
+                          invoked=confirmed.append, failed=failed.append)
+        self.assertEqual(scanner.opens, 1)
+        self.assertGreaterEqual(scanner.scans, 2)
+        self.assertIn('confirmed', confirmed[0])
+        self.assertEqual(failed, [])
+
+    def test_unconfirmed_attempt_is_not_reinvoked_while_waiting(self):
+        class Scanner:
+            room_identity = (1,)
+            ocr_lines = []
+            ocr_comparisons = []
+            opens = 0
+            def scan(self):
+                return [(('Alice',), 'available', object(), 10, 'On Cam')]
+            def open_if_available(self, *args):
+                self.opens += 1
+                return True
+        scanner = Scanner()
+        confirmed, failed, clock = [], [], [10.0]
+        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
+             patch('paltalk_room_opener.camera_automation.time.monotonic', side_effect=lambda: clock[0]), \
+             patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=lambda t: clock.__setitem__(0, clock[0] + t)):
+            watch_cameras(['Alice'], lambda _: None, lambda: bool(failed),
+                          invoked=confirmed.append, failed=failed.append)
+        self.assertEqual(scanner.opens, 1)
+        self.assertEqual(confirmed, [])
+        self.assertIn('could not be confirmed', failed[0])
+
 
 if __name__ == '__main__':
     unittest.main()

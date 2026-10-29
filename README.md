@@ -51,7 +51,7 @@ Room names and the delay are stored in `%LOCALAPPDATA%\PaltalkRoomOpener\room_na
 
 ## Camera Opener
 
-Enter up to 200 exact usernames on the Camera Opener tab and add them to the list. Double-click an entry to edit it. Additions, edits and removals are saved and take effect during monitoring; newly added names are checked on the next scan. Start monitoring manually, or enable **Start when Paltalk starts**. A green dot marks a live camera detected in the visible room during monitoring; an unmarked name may simply be outside the visible scan. Camera settings are stored separately in `%LOCALAPPDATA%\PaltalkRoomOpener\camera_names.json`.
+Enter up to 200 exact usernames on the Camera Opener tab and add them to the list. Double-click an entry to edit it. Additions, edits and removals are saved and take effect during monitoring; newly added names are checked on the next scan. Start monitoring manually, or enable **Start when Paltalk starts**. A green dot marks a live camera detected in the visible room during monitoring; an unmarked name may simply be outside the visible scan. Enable **Prompt to add manually opened cameras** to be asked whether to add a newly opened camera username while monitoring. The visible room list must remain readable; cameras already open when monitoring or the option starts are not prompted. Monitoring can start with an empty list when this option is enabled. Camera settings are stored separately in `%LOCALAPPDATA%\PaltalkRoomOpener\camera_names.json`.
 
 **Portrait adjustment** controls whether monitoring may move Paltalk to reveal camera buttons clipped on a portrait display. It is on by default, is saved with the camera settings, and can be changed while monitoring.
 

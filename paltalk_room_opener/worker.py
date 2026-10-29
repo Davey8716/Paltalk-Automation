@@ -410,11 +410,13 @@ class CameraWorker(QThread):
     invoked = Signal(str)
     failed = Signal(str)
     live_status = Signal(object)
+    manual_opened = Signal(str)
 
-    def __init__(self, names, portrait_adjustment=True):
+    def __init__(self, names, portrait_adjustment=True, manual_prompt=False):
         super().__init__()
         self.names = list(names)
         self.portrait_adjustment = portrait_adjustment
+        self.manual_prompt = manual_prompt
         self.names_lock = threading.Lock()
         self.name_updates = queue.Queue()
 
@@ -427,6 +429,11 @@ class CameraWorker(QThread):
         with self.names_lock:
             self.portrait_adjustment = bool(enabled)
             self.name_updates.put({'portrait_adjustment': self.portrait_adjustment})
+
+    def update_manual_prompt(self, enabled):
+        with self.names_lock:
+            self.manual_prompt = bool(enabled)
+            self.name_updates.put({'manual_prompt': self.manual_prompt})
 
     def run(self):
         while not self.isInterruptionRequested():
@@ -445,11 +452,12 @@ class CameraWorker(QThread):
         with self.names_lock:
             initial_names = list(self.names)
             initial_adjustment = self.portrait_adjustment
+            initial_manual_prompt = self.manual_prompt
             while not self.name_updates.empty():
                 self.name_updates.get_nowait()
         process = subprocess.Popen(
             helper_command('camera_helper_process', json.dumps(initial_names, ensure_ascii=True),
-                           json.dumps(initial_adjustment)),
+                           json.dumps(initial_adjustment), json.dumps(initial_manual_prompt)),
             cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
@@ -509,6 +517,8 @@ class CameraWorker(QThread):
                     self.failed.emit(value)
                 elif kind == 'live_status':
                     self.live_status.emit(value)
+                elif kind == 'manual_opened':
+                    self.manual_opened.emit(value)
                 elif kind == 'error':
                     raise RuntimeError(value)
         finally:

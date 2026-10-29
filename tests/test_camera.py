@@ -58,7 +58,7 @@ class CameraTests(unittest.TestCase):
             root = Path(directory)
             with patch.object(settings, 'APP_DATA_DIR', root), patch.object(settings, 'CAMERA_SETTINGS_PATH', root / 'cameras.json'):
                 settings.save_camera_settings(['Dave8787', 'margot73'], True, True)
-                self.assertEqual(settings.load_camera_settings(), {'usernames': ['Dave8787', 'margot73'], 'start_on_paltalk': True, 'alphabetical': True, 'portrait_adjustment': True})
+                self.assertEqual(settings.load_camera_settings(), {'usernames': ['Dave8787', 'margot73'], 'start_on_paltalk': True, 'alphabetical': True, 'portrait_adjustment': True, 'manual_camera_prompt': False})
                 settings.save_camera_settings(['Dave8787'], False, portrait_adjustment=False)
                 self.assertIs(settings.load_camera_settings()['portrait_adjustment'], False)
                 self.assertFalse((root / 'room_names.json').exists())

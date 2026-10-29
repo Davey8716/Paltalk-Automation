@@ -464,8 +464,55 @@ class CameraScanner:
         return True
 
 
+class ManualCameraTracker:
+    """Match OCR candidates across scans only when they identify one row."""
+    def __init__(self):
+        self.previous = []
+        self.context = None
+
+    def reset(self):
+        self.previous = []
+        self.context = None
+
+    def scan(self, rows, room, enabled, generation, names):
+        if not enabled:
+            self.reset()
+            return []
+        current = []
+        for row in rows:
+            readings = list(dict.fromkeys(value.strip() for value in _readings(row) if value and value.strip()))
+            if readings and row[1] in ('available', 'open'):
+                section = row[4] if len(row) > 4 else None
+                current.append((readings, {_normal(value) for value in readings}, row[1], section))
+        context = (room, generation)
+        listed = {_normal(name).replace('-', '_') for name in names}
+        opened = []
+        if self.context == context:
+            prompted_keys = set()
+            for readings, keys, state, section in current:
+                if state != 'open' or any(key.replace('-', '_') in listed for key in keys):
+                    continue
+                matches = [old for old in self.previous if old[3] == section and keys & old[1]]
+                if len(matches) != 1 or matches[0][2] != 'available':
+                    continue
+                old = matches[0]
+                if sum(other[3] == section and bool(other[1] & old[1]) for other in current) != 1:
+                    continue
+                if any(key.replace('-', '_') in listed for key in old[1]):
+                    continue
+                shared = keys & old[1]
+                all_keys = keys | old[1]
+                if all_keys & prompted_keys:
+                    continue
+                opened.append(next(value for value in readings if _normal(value) in shared))
+                prompted_keys.update(all_keys)
+        self.previous = current
+        self.context = context
+        return opened
+
+
 def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None, current_names=None, live_status=None,
-                  portrait_adjustment_enabled=None):
+                  portrait_adjustment_enabled=None, manual_prompt_state=None, manual_opened=None):
     if invoked is None:
         invoked = log
     if failed is None:
@@ -486,6 +533,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
     previous_room = None
     reported = {}
     diagnostic_reported = False
+    manual_tracker = ManualCameraTracker()
     while not stopped():
         retry_delay = .25
         try:
@@ -497,6 +545,11 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                     attempted_name, _, _ = pending.pop(key)
                     failed(f'{attempted_name}: camera opening could not be confirmed because the username was removed.')
             rows = scanner.scan()
+            if manual_prompt_state is not None and manual_opened is not None:
+                enabled, generation = manual_prompt_state()
+                for detected_name in manual_tracker.scan(rows, scanner.room_identity, enabled, generation, names):
+                    if not stopped():
+                        manual_opened(detected_name)
             if scanner.room_identity != previous_room:
                 for attempted_name, _, _ in pending.values():
                     failed(f'{attempted_name}: camera opening could not be confirmed because the room changed.')
@@ -582,6 +635,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
         except _ScanStopped:
             break
         except Exception as exc:
+            manual_tracker.reset()
             for attempted_name, _, _ in pending.values():
                 failed(f'{attempted_name}: camera button was invoked, but opening could not be confirmed because the scan failed.')
             pending.clear()

@@ -7,7 +7,7 @@ from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QDrag, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
-    QGraphicsDropShadowEffect, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+    QGraphicsDropShadowEffect, QInputDialog, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
     QScrollArea, QStyle, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -207,6 +207,8 @@ class MainWindow(QMainWindow):
         self.room_states = None
         self.other_open_names = []
         self.camera_worker = None
+        self.camera_prompt_dialog = None
+        self.camera_prompt_queue = []
         self.mic_timer_worker = None
         self.chat_reader_worker = None
         self._closing_pending = False
@@ -991,6 +993,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self.advert_tracker.stop()
+        self.clear_camera_prompts()
         self.camera_restart_pending = False
         self.auto_open_pending = False
         running = False
@@ -1330,6 +1333,11 @@ class MainWindow(QMainWindow):
         self.camera_stop.setFixedSize(150, 35)
         controls.addStretch()
         layout.addLayout(controls)
+        self.camera_manual_prompt = QPushButton('Prompt to add manually opened cameras: Off')
+        self.camera_manual_prompt.setObjectName('autoOpenButton')
+        self.camera_manual_prompt.setCheckable(True)
+        self.camera_manual_prompt.setToolTip('While monitoring, prompt to add newly opened cameras in the visible room.')
+        layout.addWidget(self.camera_manual_prompt, alignment=Qt.AlignmentFlag.AlignLeft)
         output = QHBoxLayout()
 
         def clear_log_button(label):
@@ -1395,6 +1403,9 @@ class MainWindow(QMainWindow):
                     item.setData(Qt.ItemDataRole.UserRole, number)
                     self.camera_next_order = max(self.camera_next_order, number + 1)
                 self.renumber_camera_names()
+            manual_prompt = data.get('manual_camera_prompt', False)
+            self.camera_manual_prompt.setChecked(manual_prompt if type(manual_prompt) is bool else False)
+            self.camera_manual_prompt.setText('Prompt to add manually opened cameras: ' + ('On' if self.camera_manual_prompt.isChecked() else 'Off'))
             self.camera_auto.setChecked(bool(data.get('start_on_paltalk', False)))
             portrait_adjustment = data.get('portrait_adjustment', True)
             self.camera_portrait_adjustment.setChecked(portrait_adjustment if type(portrait_adjustment) is bool else True)
@@ -1420,6 +1431,7 @@ class MainWindow(QMainWindow):
         remove.clicked.connect(self.remove_camera_name)
         self.camera_auto.toggled.connect(self.camera_auto_changed)
         self.camera_portrait_adjustment.toggled.connect(self.camera_portrait_adjustment_changed)
+        self.camera_manual_prompt.toggled.connect(self.camera_manual_prompt_changed)
         self.camera_start.clicked.connect(self.start_cameras)
         self.camera_stop.clicked.connect(self.stop_cameras)
 
@@ -1633,6 +1645,10 @@ class MainWindow(QMainWindow):
 
     def add_camera_name(self):
         name = self.camera_entry.text().strip()
+        MainWindow.add_camera_username(self, name, clear_entry=True)
+
+    def add_camera_username(self, name, clear_entry=False):
+        name = name.strip()
         if name and name.casefold() not in {n.casefold() for n in self.camera_username_list()}:
             if self.camera_names.count() >= 200:
                 QMessageBox.warning(self, 'Camera usernames', 'The list can contain up to 200 usernames.')
@@ -1649,7 +1665,8 @@ class MainWindow(QMainWindow):
             self.camera_names.setCurrentItem(item)
             self.camera_names.scrollToItem(item)
             self.camera_names_scroll.ensureVisible(0, self.camera_names.visualItemRect(item).center().y())
-            self.camera_entry.clear()
+            if clear_entry:
+                self.camera_entry.clear()
             self.update_camera_names()
             self.remind_camera_export()
 
@@ -1703,7 +1720,8 @@ class MainWindow(QMainWindow):
             settings.save_camera_settings(self.camera_username_list(), self.camera_auto.isChecked(),
                                           self.camera_alphabetical.isChecked(),
                                           [item.data(Qt.ItemDataRole.UserRole) for item in items],
-                                          self.camera_next_order, self.camera_portrait_adjustment.isChecked())
+                                          self.camera_next_order, self.camera_portrait_adjustment.isChecked(),
+                                          self.camera_manual_prompt.isChecked())
             self.camera_log.appendPlainText('Camera settings saved.')
             return True
         except OSError as exc:
@@ -1722,20 +1740,78 @@ class MainWindow(QMainWindow):
             self.camera_worker.update_portrait_adjustment(enabled)
         self.save_camera_settings()
 
+    def camera_manual_prompt_changed(self, enabled):
+        self.camera_manual_prompt.setText('Prompt to add manually opened cameras: ' + ('On' if enabled else 'Off'))
+        if not enabled:
+            self.clear_camera_prompts()
+        if self.camera_worker:
+            self.camera_worker.update_manual_prompt(enabled)
+        self.save_camera_settings()
+
+    def clear_camera_prompts(self):
+        self.camera_prompt_queue.clear()
+        if self.camera_prompt_dialog is not None:
+            dialog = self.camera_prompt_dialog
+            self.camera_prompt_dialog = None
+            dialog.reject()
+            dialog.deleteLater()
+
+    def queue_manual_camera_prompt(self, name):
+        if not self.camera_worker or self.camera_worker.isInterruptionRequested() or not self.camera_manual_prompt.isChecked():
+            return
+        if name.casefold() in {n.casefold() for n in self.camera_username_list()}:
+            return
+        if name.casefold() not in {n.casefold() for n in self.camera_prompt_queue}:
+            self.camera_prompt_queue.append(name)
+        self.show_next_camera_prompt()
+
+    def show_next_camera_prompt(self):
+        if self.camera_prompt_dialog is not None or not self.camera_prompt_queue:
+            return
+        if not self.camera_worker or self.camera_worker.isInterruptionRequested() or not self.camera_manual_prompt.isChecked():
+            self.camera_prompt_queue.clear()
+            return
+        name = self.camera_prompt_queue.pop(0)
+        if name.casefold() in {n.casefold() for n in self.camera_username_list()}:
+            self.show_next_camera_prompt()
+            return
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle('Add camera username')
+        dialog.setLabelText('Check the detected username and correct it if needed:')
+        dialog.setTextValue(name)
+        dialog.setOkButtonText('Add')
+        dialog.setCancelButtonText('Cancel')
+        self.camera_prompt_dialog = dialog
+
+        def finished(result):
+            if self.camera_prompt_dialog is not dialog:
+                return
+            self.camera_prompt_dialog = None
+            if (result == QDialog.DialogCode.Accepted and self.camera_worker
+                    and not self.camera_worker.isInterruptionRequested() and self.camera_manual_prompt.isChecked()):
+                self.add_camera_username(dialog.textValue())
+            dialog.deleteLater()
+            self.show_next_camera_prompt()
+
+        dialog.finished.connect(finished)
+        dialog.open()
+
     def start_cameras(self, automatic=False):
         if self.camera_worker:
             return
         names = self.camera_username_list()
-        if not names:
+        if not names and not self.camera_manual_prompt.isChecked():
             self.camera_log.appendPlainText('Add at least one username before starting.')
             return
         if not self.save_camera_settings():
             return
-        self.camera_worker = CameraWorker(names, self.camera_portrait_adjustment.isChecked())
+        self.camera_worker = CameraWorker(names, self.camera_portrait_adjustment.isChecked(),
+                                          self.camera_manual_prompt.isChecked())
         self.camera_worker.message.connect(self.camera_log.appendPlainText)
         self.camera_worker.invoked.connect(self.camera_invoked_log.appendPlainText)
         self.camera_worker.failed.connect(self.camera_failed_log.appendPlainText)
         self.camera_worker.live_status.connect(self.update_camera_live_status)
+        self.camera_worker.manual_opened.connect(self.queue_manual_camera_prompt)
         self.camera_worker.finished.connect(self.cameras_finished)
         self.camera_start.setEnabled(False)
         self.camera_stop.setEnabled(True)
@@ -1743,6 +1819,7 @@ class MainWindow(QMainWindow):
         self.camera_worker.start()
 
     def stop_cameras(self):
+        self.clear_camera_prompts()
         self.camera_restart_pending = False
         self.update_camera_live_status([])
         if self.camera_worker:
@@ -1751,6 +1828,7 @@ class MainWindow(QMainWindow):
             self.camera_log.appendPlainText('Stopping camera monitoring...')
 
     def cameras_finished(self):
+        self.clear_camera_prompts()
         self.update_camera_live_status([])
         self.camera_worker = None
         self.camera_start.setEnabled(True)

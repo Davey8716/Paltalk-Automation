@@ -303,6 +303,13 @@ class CameraScanner:
         self.a = _uia()
 
     def scan(self):
+        try:
+            return self._scan()
+        except BaseException:
+            self._ocr_cache = None
+            raise
+
+    def _scan(self):
         stopped = getattr(self, 'stopped', lambda: False)
         progress = getattr(self, 'progress', lambda stage: None)
         progress('finding the visible room')
@@ -343,13 +350,8 @@ class CameraScanner:
         if width < 30 or height < 30 or width > 3000 or height > 4000:
             raise RuntimeError('Room member list has invalid screen bounds.')
         image = ImageGrab.grab(bbox=(left, top, left + width, top + height), all_screens=True)
-        progress('reading the room list')
-        lines = _ocr(image, stopped)
-        sections = _sections(lines, height)
-        self.ocr_lines = [f"{label}: {line['text'].strip()}"
-                          for label, start, end in sections for line in lines
-                          if start < (line['top'] + line['bottom']) / 2 < end]
-        buttons = []
+        # Gather fresh controls before deciding whether the OCR results can be reused.
+        controls = []
         for e in member_list.FindAll(a.TreeScope.Descendants,
                 a.PropertyCondition(a.AutomationElement.ControlTypeProperty, a.ControlType.Button)):
             c = e.Current
@@ -358,12 +360,37 @@ class CameraScanner:
             b = c.BoundingRectangle
             x, y = int(b.X) - left, int(b.Y) - top
             bw, bh = int(b.Width), int(b.Height)
-            if bw <= 0 or bh <= 0 or x < 0 or x + bw > width:
+            if bw <= 0 or bh <= 0 or x < 0 or y < 0 or x + bw > width or y + bh > height:
                 continue
-            section = _button_section(c, a.ControlType.Button, y, bh, sections)
+            controls.append((x, y, bw, bh, e))
+        geometry = tuple((x, y, bw, bh) for x, y, bw, bh, _ in controls)
+        comparison = image.convert('RGB')
+        mask = ImageDraw.Draw(comparison)
+        for x, y, bw, bh in geometry:
+            mask.rectangle((x, y, x + bw - 1, y + bh - 1), fill=(0, 0, 0))
+        cache_key = (self.room_identity, width, height, geometry, comparison.tobytes())
+        cache = getattr(self, '_ocr_cache', None)
+        if cache is not None and cache['key'] == cache_key:
+            self.ocr_lines = cache['ocr_lines']
+            self.ocr_comparisons = cache['ocr_comparisons']
+            return [(readings, _camera_state(image, *geometry[index]), controls[index][4], center, section)
+                    for index, readings, center, section in cache['rows']]
+        # A failed or interrupted refresh must never leave an older cache usable.
+        self._ocr_cache = None
+        progress('reading the room list')
+        lines = _ocr(image, stopped)
+        sections = _sections(lines, height)
+        self.ocr_lines = [f"{label}: {line['text'].strip()}"
+                          for label, start, end in sections for line in lines
+                          if start < (line['top'] + line['bottom']) / 2 < end]
+        buttons = []
+        button_indices = []
+        for index, (x, y, bw, bh, e) in enumerate(controls):
+            section = _button_section(e.Current, a.ControlType.Button, y, bh, sections)
             if section is None:
                 continue
             buttons.append((y + bh / 2, _camera_state(image, x, y, bw, bh), e, x, section))
+            button_indices.append(index)
         # Find badge shapes after the first recognized word. Never cut through a
         # word: a merged word makes that row ambiguous instead.
         boundaries = {}
@@ -397,6 +424,7 @@ class CameraScanner:
         progress('checking name readings')
         third_lines = _ocr(third_image, stopped)
         rows = []
+        cached_rows = []
         self.ocr_comparisons = []
         for index, (center, state, element, button_x, section) in enumerate(buttons):
             if sum(abs(other[0] - center) <= 18 for other in buttons) != 1:
@@ -416,6 +444,9 @@ class CameraScanner:
                     f'badge boundary={boundary!r}, original word positions={positions!r}')
             if readings:
                 rows.append((readings, state, element, center, section))
+                cached_rows.append((button_indices[index], readings, center, section))
+        self._ocr_cache = {'key': cache_key, 'sections': sections, 'rows': cached_rows,
+                           'ocr_lines': self.ocr_lines, 'ocr_comparisons': self.ocr_comparisons}
         return rows
 
     def open_if_available(self, name, stopped=lambda: False, configured_names=None):

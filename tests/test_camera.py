@@ -92,6 +92,72 @@ class CameraTests(unittest.TestCase):
         self.assertFalse(scanner.open_if_available('tiffee'))
         self.assertEqual(e.pattern.calls, 1)
 
+    def test_scanner_cache_uses_fresh_controls_and_invalidates_on_changes(self):
+        class Element:
+            def __init__(self, x=80):
+                self.Current = SimpleNamespace(ControlType='button', IsOffscreen=False,
+                    AutomationId='MemberContentWidget',
+                    BoundingRectangle=SimpleNamespace(X=x, Y=30, Width=10, Height=10))
+                self.pattern = MagicMock()
+            def GetCurrentPattern(self, _):
+                return self.pattern
+
+        control = [Element()]
+        identity = [(1,)]
+        member = SimpleNamespace(Current=SimpleNamespace(IsOffscreen=False,
+            BoundingRectangle=SimpleNamespace(X=0, Y=0, Width=100, Height=60)),
+            GetRuntimeId=lambda: identity[0], FindAll=lambda *args: control)
+        window = SimpleNamespace(FindAll=lambda *args: [member])
+        root = SimpleNamespace(FindAll=lambda *args: [window])
+        a = SimpleNamespace(AutomationElement=SimpleNamespace(RootElement=root,
+            ProcessIdProperty=1, ClassNameProperty=2, ControlTypeProperty=3),
+            ControlType=SimpleNamespace(Button='button'), TreeScope=SimpleNamespace(Children=1, Descendants=2),
+            PropertyCondition=lambda *args: None, AndCondition=lambda *args: None,
+            InvokePattern=SimpleNamespace(Pattern=1))
+        scanner = CameraScanner.__new__(CameraScanner)
+        scanner.a = a
+        scanner.portrait_adjustment_enabled = lambda: False
+        image = Image.new('RGB', (100, 60), 'white')
+        ImageDraw.Draw(image).rectangle((80, 30, 89, 39), fill=(30, 150, 240))
+        captures = [image]
+        lines = [{'text': 'On Cam', 'top': 0, 'bottom': 15, 'words': []},
+                 {'text': 'Alice', 'top': 30, 'bottom': 40, 'words': [
+                     {'text': 'Alice', 'left': 5, 'right': 40, 'top': 30, 'bottom': 40}]}]
+        with patch('paltalk_room_opener.camera_automation.psutil.process_iter',
+                   return_value=[SimpleNamespace(info={'pid': 1, 'name': 'Paltalk.exe'})]), \
+             patch('paltalk_room_opener.camera_automation.import_module', return_value=SimpleNamespace(Int32=int)), \
+             patch('paltalk_room_opener.camera_automation.ImageGrab.grab', side_effect=lambda **kwargs: captures[0].copy()), \
+             patch('paltalk_room_opener.camera_automation._ocr', return_value=lines) as ocr:
+            self.assertEqual(scanner.scan()[0][1], 'available')
+            self.assertEqual(ocr.call_count, 3)
+            fresh = Element()
+            control[0] = fresh
+            changed_icon = image.copy()
+            ImageDraw.Draw(changed_icon).rectangle((80, 30, 89, 39), fill=(40, 210, 30))
+            captures[0] = changed_icon
+            row = scanner.scan()[0]
+            self.assertEqual((row[1], row[2]), ('open', fresh))
+            self.assertEqual(ocr.call_count, 3)
+            changed_name = changed_icon.copy()
+            changed_name.putpixel((5, 32), (0, 0, 0))
+            captures[0] = changed_name
+            scanner.scan()
+            self.assertEqual(ocr.call_count, 6)
+            identity[0] = (2,)
+            scanner.scan()
+            self.assertEqual(ocr.call_count, 9)
+            control[0] = Element(75)
+            scanner.scan()
+            self.assertEqual(ocr.call_count, 12)
+            captures[0].putpixel((10, 10), (0, 0, 0))
+            ocr.side_effect = RuntimeError('OCR failed')
+            with self.assertRaisesRegex(RuntimeError, 'OCR failed'):
+                scanner.scan()
+            self.assertIsNone(scanner._ocr_cache)
+            ocr.side_effect = None
+            scanner.scan()
+            self.assertEqual(ocr.call_count, 16)
+
     def test_badge_shapes_and_row_word_boundaries(self):
         image = Image.new('RGB', (200, 24), 'white')
         draw = ImageDraw.Draw(image)

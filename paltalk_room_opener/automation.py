@@ -144,8 +144,11 @@ def _navigate_my_rooms(a, stopped=lambda: False):
             time.sleep(0.1)
         raise RuntimeError(f'{description} was not available.')
 
-    browse = wait_for(lambda: find('Browse Chat Rooms', a.ControlType.Button), 'Browse Chat Rooms button')
-    browse.GetCurrentPattern(a.InvokePattern.Pattern).Invoke()
+    navigation = wait_for(
+        lambda: (find('Browse Chat Rooms', a.ControlType.Button)
+                 or find('ContactList_RoomsButton', a.ControlType.Button)),
+        'Paltalk room navigation button')
+    navigation.GetCurrentPattern(a.InvokePattern.Pattern).Invoke()
     tab = wait_for(lambda: find('My Rooms', a.ControlType.CheckBox), 'My Rooms tab')
     toggle = tab.GetCurrentPattern(a.TogglePattern.Pattern)
     if toggle.Current.ToggleState != a.ToggleState.On:

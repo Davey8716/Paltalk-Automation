@@ -88,8 +88,18 @@ class RoomNameField(QLineEdit):
         super().__init__()
         self.room_index = index
         self.reorder = reorder
+        self.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
+        self.textChanged.connect(self._show_start_when_unfocused)
+
+    def _show_start_when_unfocused(self):
+        if not self.hasFocus():
+            self.setCursorPosition(0)
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.setCursorPosition(0)
 
     def dragEnterEvent(self, event):
         if isinstance(event.source(), (RoomNameField, RoomDragHandle)):

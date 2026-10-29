@@ -1,0 +1,10 @@
+There are several possibilities, depending on which controls Paltalk exposes and whether they have reliable names and actions.
+
+The app already uses exposed controls to open and close rooms, expand Recently Visited, and open cameras. Useful extensions could include:
+- Room monitoring: alert you if a configured room closes, and optionally reopen it.
+- Camera controls: close selected camera windows or reopen a camera if it closes.
+- Mic queue: alert you when someone joins the queue, or help you navigate to a person in it.
+- Room controls: provide shortcuts for actions such as mute, volume, or switching rooms, if those controls are exposed.
+- Chat alerts: expand the existing phrase matching to notify you when a username or phrase appears.
+- Startup routines: open your rooms, start camera monitoring, and start chat monitoring together.
+The strongest next step is to inspect the live Paltalk window and make a list of its exposed controls. The code confirms the controls already used, but it doesn’t establish which other buttons are available or whether they can be operated reliably. The camera feature also currently depends on visible rows and OCR to identify usernames.

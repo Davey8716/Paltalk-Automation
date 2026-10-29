@@ -278,11 +278,12 @@ class CameraTests(unittest.TestCase):
         with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
              patch('paltalk_room_opener.camera_automation.time.monotonic', side_effect=lambda: clock[0]), \
              patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=lambda t: clock.__setitem__(0, clock[0] + t)):
-            watch_cameras(['Alice'], lambda _: None, lambda: bool(confirmed),
+            watch_cameras(['Alice'], lambda _: None, lambda: any('confirmed' in message for message in confirmed),
                           invoked=confirmed.append, failed=failed.append)
         self.assertEqual(scanner.opens, 1)
         self.assertGreaterEqual(scanner.scans, 2)
-        self.assertIn('confirmed', confirmed[0])
+        self.assertIn('waiting for confirmation', confirmed[0])
+        self.assertIn('confirmed', confirmed[1])
         self.assertEqual(failed, [])
 
     def test_unconfirmed_attempt_is_not_reinvoked_while_waiting(self):
@@ -304,7 +305,8 @@ class CameraTests(unittest.TestCase):
             watch_cameras(['Alice'], lambda _: None, lambda: bool(failed),
                           invoked=confirmed.append, failed=failed.append)
         self.assertEqual(scanner.opens, 1)
-        self.assertEqual(confirmed, [])
+        self.assertEqual(len(confirmed), 1)
+        self.assertIn('waiting for confirmation', confirmed[0])
         self.assertIn('could not be confirmed', failed[0])
 
 

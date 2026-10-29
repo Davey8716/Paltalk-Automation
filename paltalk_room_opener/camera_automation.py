@@ -467,7 +467,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                     return stopped() or (current_names is not None and name not in current_names())
                 if scanner.open_if_available(name, name_removed, current_names or latest_names):
                     pending[key] = (name, scanner.room_identity, time.monotonic() + 5)
-                    log(f'Invoked camera button for {name}; waiting for confirmation.')
+                    invoked(f'Invoked camera button for {name}; waiting for confirmation.')
                     # Let Paltalk finish opening the view before invoking another.
                     for _ in range(10):
                         if stopped():

@@ -11,7 +11,7 @@ from pathlib import Path
 import psutil
 from PySide6.QtCore import QThread, Signal
 
-from .automation import close_room, open_rooms, room_states, restore_paltalk, is_paltalk_running
+from .automation import close_room, navigate_my_rooms, open_rooms, room_states, restore_paltalk, is_paltalk_running
 from .chat_reader import ChatMessage, ChatSnapshot
 from .chat_matches import ChatMatchTracker
 from .settings import load_admin_phrases
@@ -237,6 +237,12 @@ class RoomWorker(QThread):
                     self.message.emit("All configured rooms are already open.")
                     self.completed.emit(self.ALREADY_OPEN)
                     return
+            self.message.emit('Opening Paltalk My Rooms...')
+            navigate_my_rooms(self.isInterruptionRequested)
+            if self.isInterruptionRequested():
+                self.message.emit('Stopped.')
+                self.completed.emit(0)
+                return
             queued_rooms = open_rooms(names, self.delay, self.message.emit, self.isInterruptionRequested)
             self.completed.emit(queued_rooms)
         except Exception as exc:

@@ -84,11 +84,13 @@ class RoomHelperTests(unittest.TestCase):
                  patch.object(room_helper_process, 'restore_paltalk') as restore, \
                  patch.object(room_helper_process, 'room_states', return_value=states), \
                  patch.object(room_helper_process, 'close_room') as close, \
+                 patch.object(room_helper_process, 'navigate_my_rooms') as navigate, \
                  patch.object(room_helper_process, 'open_rooms', return_value=1) as opener:
                 room_helper_process.main()
             restore.assert_called_once()
             self.assertEqual(close.call_count, int(state is True))
             self.assertEqual(opener.call_count, int(state is False))
+            self.assertEqual(navigate.call_count, int(state is False))
             if state is None or state == {}:
                 self.assertIn(('result', -2), events)
 
@@ -105,6 +107,20 @@ class RoomHelperTests(unittest.TestCase):
         close.assert_not_called()
         opener.assert_not_called()
         self.assertTrue(any(kind == 'error' and 'unavailable' in value for kind, value in events))
+
+    def test_navigation_failure_stops_single_and_automatic_opening(self):
+        for action in ('single', 'automatic'):
+            events = []
+            with self.subTest(action=action), \
+                 patch('sys.argv', ['helper', action, '["Alpha"]']), \
+                 patch.object(room_helper_process, 'send', side_effect=lambda kind, value: events.append((kind, value))), \
+                 patch.object(room_helper_process, 'restore_paltalk'), \
+                 patch.object(room_helper_process, 'room_states', return_value={'Alpha': False}), \
+                 patch.object(room_helper_process, 'navigate_my_rooms', side_effect=RuntimeError('tab unavailable')), \
+                 patch.object(room_helper_process, 'open_rooms') as opener:
+                room_helper_process.main()
+            opener.assert_not_called()
+            self.assertTrue(any(kind == 'error' and 'tab unavailable' in value for kind, value in events))
 
 
 if __name__ == '__main__':

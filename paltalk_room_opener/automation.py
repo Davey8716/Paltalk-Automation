@@ -120,6 +120,49 @@ def _paltalk_windows(a):
     return [window for window in windows if window.Current.ProcessId in pids]
 
 
+def _navigate_my_rooms(a, stopped=lambda: False):
+    """Select the My Rooms tab using controls belonging to Paltalk."""
+    def find(name, kind):
+        condition = a.AndCondition(
+            a.PropertyCondition(a.AutomationElement.NameProperty, name),
+            a.PropertyCondition(a.AutomationElement.ControlTypeProperty, kind))
+        matches = [element for window in _paltalk_windows(a)
+                   for element in window.FindAll(a.TreeScope.Descendants, condition)
+                   if element.Current.IsEnabled and not element.Current.IsOffscreen]
+        if len(matches) > 1:
+            raise RuntimeError(f'Multiple {name} controls found.')
+        return matches[0] if matches else None
+
+    def wait_for(predicate, description):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if stopped():
+                raise RuntimeError('Room opening stopped.')
+            result = predicate()
+            if result:
+                return result
+            time.sleep(0.1)
+        raise RuntimeError(f'{description} was not available.')
+
+    browse = wait_for(lambda: find('Browse Chat Rooms', a.ControlType.Button), 'Browse Chat Rooms button')
+    browse.GetCurrentPattern(a.InvokePattern.Pattern).Invoke()
+    tab = wait_for(lambda: find('My Rooms', a.ControlType.CheckBox), 'My Rooms tab')
+    toggle = tab.GetCurrentPattern(a.TogglePattern.Pattern)
+    if toggle.Current.ToggleState != a.ToggleState.On:
+        tab.GetCurrentPattern(a.InvokePattern.Pattern).Invoke()
+    wait_for(lambda: toggle.Current.ToggleState == a.ToggleState.On, 'Selected My Rooms tab')
+
+
+def navigate_my_rooms(stopped=lambda: False):
+    """Open the room browser and verify its My Rooms tab is selected."""
+    clr = import_module('clr')
+    root = Path(os.environ.get('WINDIR', r'C:\Windows')) / 'Microsoft.NET' / 'assembly' / 'GAC_MSIL'
+    for assembly in ('UIAutomationClient', 'UIAutomationTypes'):
+        paths = sorted((root / assembly).glob(f'*/{assembly}.dll'))
+        clr.AddReference(str(paths[-1]) if paths else assembly)
+    _navigate_my_rooms(import_module('System.Windows.Automation'), stopped)
+
+
 class PaltalkWindowNotFound(RuntimeError):
     """The Paltalk main window is unavailable or cannot be selected safely."""
 

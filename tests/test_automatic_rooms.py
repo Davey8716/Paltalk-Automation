@@ -19,13 +19,14 @@ class AutomaticRoomTests(unittest.TestCase):
              patch.object(room_helper_process, 'send', side_effect=lambda kind, value: messages.append((kind, value))), \
              patch.object(room_helper_process, 'restore_paltalk', side_effect=lambda: events.append('restore')), \
              patch.object(room_helper_process, 'room_states', return_value=states), \
+             patch.object(room_helper_process, 'navigate_my_rooms', side_effect=lambda: events.append('navigate')), \
              patch.object(room_helper_process, 'open_rooms', return_value=1) as opener:
             room_helper_process.main()
         return events, messages, opener
 
     def test_automatic_opens_only_closed_rooms(self):
         events, messages, opener = self.run_helper({'Alpha': True, 'Beta': False})
-        self.assertEqual(events, ['restore'])
+        self.assertEqual(events, ['restore', 'navigate'])
         self.assertEqual(opener.call_args.args[:2], (['Beta'], 7))
         self.assertIn(('result', 1), messages)
         self.assertIn(('message', 'Already open, skipping room: Alpha'), messages)
@@ -58,10 +59,25 @@ class AutomaticRoomTests(unittest.TestCase):
     def test_manual_open_restores_and_opens(self):
         worker = RoomWorker(['Alpha'], 5)
         with patch('paltalk_room_opener.worker.restore_paltalk') as restore, \
+             patch('paltalk_room_opener.worker.navigate_my_rooms') as navigate, \
              patch('paltalk_room_opener.worker.open_rooms', return_value=1) as opener:
             worker.run()
         restore.assert_called_once()
+        navigate.assert_called_once()
         self.assertEqual(opener.call_args.args[0], ['Alpha'])
+
+    def test_manual_navigation_failure_does_not_open_rooms(self):
+        worker = RoomWorker(['Alpha'], 5)
+        messages, results = [], []
+        worker.message.connect(messages.append)
+        worker.completed.connect(results.append)
+        with patch('paltalk_room_opener.worker.restore_paltalk'), \
+             patch('paltalk_room_opener.worker.navigate_my_rooms', side_effect=RuntimeError('My Rooms unavailable')), \
+             patch('paltalk_room_opener.worker.open_rooms') as opener:
+            worker.run()
+        opener.assert_not_called()
+        self.assertEqual(results, [-1])
+        self.assertTrue(any('My Rooms unavailable' in message for message in messages))
 
 
 if __name__ == '__main__':

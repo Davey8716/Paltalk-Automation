@@ -47,7 +47,7 @@ Use the **Open** or **Close** button beside a room name to manage that room on i
 
 The delay between rooms is at least five seconds to give rooms time to load. Previously saved delays below five seconds are raised to five seconds.
 
-Room names and the delay are stored in `%LOCALAPPDATA%\PaltalkRoomOpener\room_names.json` (under the current user's profile). The app finds Paltalk windows by process name, searches for exactly named UI Automation buttons, and invokes a matching button only when it is onscreen and has positive width. A successful invocation means the button was invoked; it does not independently verify that the room joined. If a room is not found, the app logs the failure and continues with the next room. Paltalk's layout, permissions, and navigation may affect which tiles are visible; return to the Rooms view if necessary.
+Room names and the delay are stored in `%LOCALAPPDATA%\PaltalkRoomOpener\room_names.json` (under the current user's profile). Before opening rooms, the app opens Paltalk's room browser and selects My Rooms. It searches for exactly named UI Automation buttons and invokes a matching button only when it is onscreen and has positive width. A successful invocation means the button was invoked; it does not independently verify that the room joined. If a room is not found, the app logs the failure and continues with the next room. Paltalk's layout and permissions may affect which tiles are visible.
 
 ## Camera Opener
 

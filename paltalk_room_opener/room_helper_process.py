@@ -3,7 +3,7 @@
 import json
 import sys
 
-from .automation import close_room, open_rooms, restore_paltalk, room_states, recently_visited_rooms
+from .automation import close_room, navigate_my_rooms, open_rooms, restore_paltalk, room_states, recently_visited_rooms
 
 
 def send(kind, value):
@@ -50,6 +50,9 @@ def main():
             send('message', 'All configured rooms are already open.')
             send('result', -3)
             return
+        stage = 'opening My Rooms'
+        send('stage', stage)
+        navigate_my_rooms()
         stage = 'finding room tile'
         send('stage', stage)
         def update_stage(value):

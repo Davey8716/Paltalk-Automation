@@ -10,11 +10,18 @@ from PIL import Image, ImageDraw
 from paltalk_room_opener import settings
 from paltalk_room_opener.camera_automation import (
     CameraScanner, _badge_boxes, _button_section, _camera_error_message, _camera_state, _match_rows, _normal,
-    _ocr, _row_text, _row_words, _section_words, _sections, _ScanStopped, watch_cameras,
+    _ocr, _portrait_clip_offset, _row_text, _row_words, _section_words, _sections, _ScanStopped, watch_cameras,
 )
 
 
 class CameraTests(unittest.TestCase):
+    def test_portrait_window_offset_only_when_right_edge_is_clipped(self):
+        portrait = SimpleNamespace(left=3840, top=0, right=4920, bottom=1920)
+        landscape = SimpleNamespace(left=0, top=0, right=1920, bottom=1080)
+        self.assertEqual(_portrait_clip_offset(portrait, 4952), 33)
+        self.assertEqual(_portrait_clip_offset(portrait, 4920), 0)
+        self.assertEqual(_portrait_clip_offset(landscape, 1952), 0)
+
     def test_automation_errors_are_reported_without_dotnet_stack_trace(self):
         error = RuntimeError('Unrecognized error.\n   at MS.Internal.Automation.UiaCoreApi.CheckError(Int32 hr)')
         self.assertEqual(_camera_error_message(error), 'Paltalk controls are temporarily unavailable. Retrying.')

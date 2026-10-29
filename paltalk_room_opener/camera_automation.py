@@ -1,6 +1,7 @@
 """Read the visible On Cam list and invoke its matching camera controls."""
 
 import ctypes
+from ctypes import wintypes
 import json
 import os
 import subprocess
@@ -226,6 +227,50 @@ def _match_rows(rows, names, target):
     return matches, conflict
 
 
+def _portrait_clip_offset(monitor, member_right):
+    """Return how far the member list extends past a portrait display."""
+    if monitor.right - monitor.left >= monitor.bottom - monitor.top:
+        return 0
+    return max(0, int(member_right - monitor.right + 1)) if member_right > monitor.right else 0
+
+
+def _reposition_clipped_portrait_window(window, member_right):
+    """Move the window left just enough to expose a clipped member list."""
+    hwnd = window.Current.NativeWindowHandle
+    if not hwnd:
+        return False
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    class MonitorInfo(ctypes.Structure):
+        _fields_ = [('cbSize', wintypes.DWORD), ('rcMonitor', wintypes.RECT),
+                    ('rcWork', wintypes.RECT), ('dwFlags', wintypes.DWORD)]
+    user32.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user32.MonitorFromWindow.restype = wintypes.HANDLE
+    user32.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MonitorInfo)]
+    user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+    user32.IsZoomed.argtypes = [wintypes.HWND]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    monitor = user32.MonitorFromWindow(hwnd, 2)
+    info = MonitorInfo()
+    info.cbSize = ctypes.sizeof(info)
+    bounds = wintypes.RECT()
+    if not monitor or not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+        raise RuntimeError('Could not identify the Paltalk display.')
+    offset = _portrait_clip_offset(info.rcMonitor, member_right)
+    if not offset:
+        return False
+    if not user32.GetWindowRect(hwnd, ctypes.byref(bounds)):
+        raise RuntimeError('Could not determine the Paltalk window position.')
+    if user32.IsZoomed(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE permits moving a maximized window.
+    if not user32.SetWindowPos(hwnd, None, bounds.left - offset, bounds.top,
+                               bounds.right - bounds.left, bounds.bottom - bounds.top,
+                               0x0010 | 0x0004):  # SWP_NOACTIVATE | SWP_NOZORDER
+        raise RuntimeError('Could not move Paltalk to reveal the camera buttons.')
+    return True
+
+
 class CameraScanner:
     def __init__(self):
         # Match UI Automation physical pixels to screenshots on scaled displays.
@@ -264,12 +309,20 @@ class CameraScanner:
                 if not c.IsOffscreen:
                     rect = c.BoundingRectangle
                     if rect.Width > 0 and rect.Height > 0:
-                        lists.append(element)
+                        lists.append((window, element))
         if len(lists) != 1:
             raise RuntimeError('Display one room with its member list visible.')
-        member_list = lists[0]
+        window, member_list = lists[0]
         self.room_identity = tuple(member_list.GetRuntimeId())
         rect = member_list.Current.BoundingRectangle
+        position = (window.Current.NativeWindowHandle, rect.X, rect.Y, rect.Width, rect.Height)
+        if getattr(self, '_portrait_adjustment', None) == position:
+            raise RuntimeError('Paltalk could not be moved far enough to reveal the camera buttons.')
+        if _reposition_clipped_portrait_window(window, rect.X + rect.Width):
+            self._portrait_adjustment = position
+            progress('adjusting Paltalk window for portrait display')
+            raise RuntimeError('Adjusted Paltalk to reveal camera buttons; retrying the scan.')
+        self._portrait_adjustment = None
         left, top = int(rect.X), int(rect.Y)
         width, height = int(rect.Width), int(rect.Height)
         if width < 30 or height < 30 or width > 3000 or height > 4000:

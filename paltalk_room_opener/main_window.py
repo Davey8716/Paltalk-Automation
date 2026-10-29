@@ -435,7 +435,10 @@ class MainWindow(QMainWindow):
     def setup_tray(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
             return
-        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+        icon_path = Path(__file__).resolve().parent.parent / 'Icons' / 'Paltalk Automation.ico'
+        icon = QIcon(str(icon_path))
+        if icon.isNull():
+            icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.setWindowIcon(icon)
         self.tray_icon = QSystemTrayIcon(icon, self)
         self.tray_icon.setToolTip("Paltalk Automation")

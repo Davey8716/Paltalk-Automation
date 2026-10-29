@@ -159,9 +159,13 @@ def scan():
     return {'room': list(element.GetRuntimeId()), 'speaker': speaker}
 
 
-if __name__ == '__main__':
+def main():
     try:
         print(json.dumps(scan(), ensure_ascii=True))
     except Exception as exc:
         message = str(exc).splitlines()[0].strip() or type(exc).__name__
         print(json.dumps({'error': message}))
+
+
+if __name__ == '__main__':
+    main()

@@ -15,6 +15,15 @@ Install the 64-bit CPython 3.14 release, then in PowerShell from this folder run
 
 Use the same Python 3.14 interpreter to install dependencies, run the app, and build the executable. Do not add the entire project folder as data; the Python source is collected by PyInstaller. Include the app's required non-Python resources, such as `paltalk_room_opener/windows_ocr.ps1`.
 
+Build a windowed executable with the helper modules and Windows automation library included:
+
+```powershell
+$python = "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe"
+& $python -m PyInstaller --noconfirm --onefile --windowed --name "Paltalk Automation" --icon "Icons/Paltalk Automation.ico" --hidden-import clr --add-data "Icons/Paltalk Automation.ico;Icons" --add-data "paltalk_room_opener/windows_ocr.ps1;paltalk_room_opener" main.py
+```
+
+The executable is created in `dist`. Quit any running copy from the notification area before replacing it or pinning the new executable.
+
 The selected tab is restored on startup and stored in `%LOCALAPPDATA%\PaltalkRoomOpener\app_state.json`.
 
 ## Use

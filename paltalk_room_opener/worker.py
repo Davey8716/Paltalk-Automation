@@ -18,13 +18,20 @@ from .settings import load_admin_phrases
 from .mic_timer import MicTimeTracker
 
 
-def run_room_helper(action, names, interrupted, message=None, timeout=20, delay=5):
-    """Run a bounded room operation without loading UI Automation in this process."""
+def helper_command(module, *args):
+    """Launch helper modules through the bundled entry point when frozen."""
     executable = sys.executable
+    if getattr(sys, 'frozen', False):
+        return [executable, '--helper', module, *args]
     if Path(executable).name.lower() == 'pythonw.exe':
         executable = str(Path(executable).with_name('python.exe'))
+    return [executable, '-m', f'paltalk_room_opener.{module}', *args]
+
+
+def run_room_helper(action, names, interrupted, message=None, timeout=20, delay=5):
+    """Run a bounded room operation without loading UI Automation in this process."""
     process = subprocess.Popen(
-        [executable, '-m', 'paltalk_room_opener.room_helper_process', action, json.dumps(names, ensure_ascii=True), str(delay)],
+        helper_command('room_helper_process', action, json.dumps(names, ensure_ascii=True), str(delay)),
         cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
@@ -101,7 +108,7 @@ class ChatReaderWorker(QThread):
 
     def read_snapshot(self):
         process = subprocess.Popen(
-            [sys.executable, '-m', 'paltalk_room_opener.chat_reader_process'],
+            helper_command('chat_reader_process'),
             cwd=str(Path(__file__).resolve().parent.parent),
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
@@ -349,16 +356,13 @@ class MicTimerWorker(QThread):
         self.message.emit(f'Mic timer: {error} Waiting for a readable room.')
 
     def run(self):
-        executable = sys.executable
-        if Path(executable).name.lower() == 'pythonw.exe':
-            executable = str(Path(executable).with_name('python.exe'))
         last_error = None
         while not self.isInterruptionRequested():
             if last_error is None:
                 self.message.emit('Scanning the visible room…')
             try:
                 process = subprocess.Popen(
-                    [executable, '-m', 'paltalk_room_opener.mic_timer'],
+                    helper_command('mic_timer'),
                     cwd=str(Path(__file__).resolve().parent.parent), stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             except OSError as exc:
@@ -424,16 +428,12 @@ class CameraWorker(QThread):
                 self.msleep(100)
 
     def run_helper(self, timeout=60):
-        executable = sys.executable
-        if Path(executable).name.lower() == 'pythonw.exe':
-            executable = str(Path(executable).with_name('python.exe'))
         with self.names_lock:
             initial_names = list(self.names)
             while not self.name_updates.empty():
                 self.name_updates.get_nowait()
         process = subprocess.Popen(
-            [executable, '-m', 'paltalk_room_opener.camera_helper_process',
-             json.dumps(initial_names, ensure_ascii=True)],
+            helper_command('camera_helper_process', json.dumps(initial_names, ensure_ascii=True)),
             cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),

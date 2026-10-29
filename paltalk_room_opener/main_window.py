@@ -15,6 +15,8 @@ from . import settings
 from .camera_name_list import CameraNameDelegate, CameraNameList
 from .styles import APP_STYLE
 from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
+from paltalk_adblocker.overlay import AdvertOverlay
+from paltalk_adblocker.tracker import PaltalkTracker
 
 
 class TextImportButton(QPushButton):
@@ -296,24 +298,29 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log)
         tabs.addTab(page, "Room Opener")
         self.create_camera_tab(tabs)
+        self.create_advert_tab(tabs)
         self.create_admin_tab(tabs)
         self.create_timer_tab(tabs)
-        tabs.setTabEnabled(2, False)
         tabs.setTabEnabled(3, False)
+        tabs.setTabEnabled(4, False)
         self.setCentralWidget(tabs)
         # Measure after the inherited stylesheet has been applied to the button.
         self.start_button.setMinimumWidth(self.start_button.sizeHint().width())
         try:
             app_state = settings.load_app_state()
             selected_tab = app_state.get('selected_tab', 'room_opener')
-            tabs.setCurrentIndex({'room_opener': 0, 'camera_opener': 1}.get(selected_tab, 0))
+            tabs.setCurrentIndex({'room_opener': 0, 'camera_opener': 1, 'advert_blocker': 2}.get(selected_tab, 0))
             self.start_in_tray.setChecked(bool(app_state.get('start_in_tray', False)))
             self.update_tray_status(self.start_in_tray.isChecked())
+            self.advert_toggle.setChecked(app_state.get('advert_overlay_enabled') is True)
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f'Could not load app state: {exc}')
         tabs.currentChanged.connect(self.save_selected_tab)
         self.start_in_tray.toggled.connect(self.save_start_in_tray)
         self.start_in_tray.toggled.connect(self.update_tray_status)
+        self.advert_toggle.toggled.connect(self.set_advert_overlay_enabled)
+        self.set_advert_overlay_enabled(self.advert_toggle.isChecked(), save=False)
+        QApplication.instance().aboutToQuit.connect(self.advert_tracker.stop)
 
         self.start_button.clicked.connect(self.toggle_opening)
         self.close_all_button.clicked.connect(self.close_all_rooms)
@@ -939,6 +946,7 @@ class MainWindow(QMainWindow):
             self.hide()
             event.ignore()
             return
+        self.advert_tracker.stop()
         self.camera_restart_pending = False
         self.auto_open_pending = False
         running = False
@@ -1468,9 +1476,37 @@ class MainWindow(QMainWindow):
 
     def save_selected_tab(self, index):
         try:
-            settings.save_app_state({0: 'room_opener', 1: 'camera_opener', 2: 'admin_actions', 3: 'timer'}.get(index, 'room_opener'))
+            settings.save_app_state({0: 'room_opener', 1: 'camera_opener', 2: 'advert_blocker', 3: 'admin_actions', 4: 'timer'}.get(index, 'room_opener'))
         except OSError as exc:
             self.log.appendPlainText(f'Could not save app state: {exc}')
+
+    def create_advert_tab(self, tabs):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(38, 24, 38, 32)
+        layout.addWidget(QLabel('Cover the advert area in the Paltalk window.'))
+        self.advert_toggle = QPushButton('Advert overlay: Off')
+        self.advert_toggle.setCheckable(True)
+        self.advert_toggle.setMaximumWidth(220)
+        layout.addWidget(self.advert_toggle, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addStretch()
+        self.advert_overlay = AdvertOverlay()
+        self.advert_tracker = PaltalkTracker(self.advert_overlay)
+        tabs.addTab(page, 'Advert Blocker')
+
+    def set_advert_overlay_enabled(self, enabled, save=True):
+        self.advert_toggle.setText(f'Advert overlay: {"On" if enabled else "Off"}')
+        if enabled:
+            self.advert_tracker.set_enabled(True)
+            self.advert_tracker.start()
+        else:
+            self.advert_tracker.stop()
+            self.advert_tracker.set_enabled(False)
+        if save:
+            try:
+                settings.save_app_state(advert_overlay_enabled=enabled)
+            except (OSError, ValueError, TypeError, AttributeError) as exc:
+                self.log.appendPlainText(f'Could not save app state: {exc}')
 
     def save_start_in_tray(self, enabled):
         try:

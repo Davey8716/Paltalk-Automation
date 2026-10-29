@@ -24,6 +24,8 @@ $python = "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe"
 
 The executable is created in `dist`. Quit any running copy from the notification area before replacing it or pinning the new executable.
 
+The **Advert Blocker** tab enables an opaque overlay over Paltalk's advert area. Its on/off setting is remembered in `app_state.json`, and the overlay continues while the app is in the tray. The overlay follows the original Paltalk Advert Overlay's window-relative layout and blocks clicks in the covered area. It starts off until enabled.
+
 The selected tab is restored on startup and stored in `%LOCALAPPDATA%\PaltalkRoomOpener\app_state.json`.
 
 ## Use

@@ -54,7 +54,7 @@ def load_app_state():
         return {}
 
 
-def save_app_state(selected_tab=None, start_in_tray=None, recent_rooms_alphabetical=None):
+def save_app_state(selected_tab=None, start_in_tray=None, recent_rooms_alphabetical=None, advert_overlay_enabled=None):
     data = load_app_state()
     if selected_tab is not None:
         data['selected_tab'] = selected_tab
@@ -62,6 +62,8 @@ def save_app_state(selected_tab=None, start_in_tray=None, recent_rooms_alphabeti
         data['start_in_tray'] = start_in_tray
     if recent_rooms_alphabetical is not None:
         data['recent_rooms_alphabetical'] = recent_rooms_alphabetical
+    if advert_overlay_enabled is not None:
+        data['advert_overlay_enabled'] = advert_overlay_enabled
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
     APP_STATE_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
 

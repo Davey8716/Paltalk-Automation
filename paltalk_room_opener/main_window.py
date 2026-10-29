@@ -51,6 +51,36 @@ class TextImportButton(QPushButton):
             event.ignore()
 
 
+class CameraEntryField(QLineEdit):
+    """Show duplicate feedback without replacing the username being typed."""
+
+    def __init__(self):
+        super().__init__()
+        self.duplicate_message = QLabel('this name has already be been entered', self)
+        self.duplicate_message.setStyleSheet('color: #e33b3b; background: transparent; padding: 0;')
+        self.duplicate_message.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.duplicate_message.hide()
+        self.setMinimumWidth(self.duplicate_message.sizeHint().width() + 150)
+
+    def set_duplicate(self, duplicate):
+        if bool(self.property('roomDuplicate')) != duplicate:
+            self.setProperty('roomDuplicate', duplicate)
+            self.style().unpolish(self)
+            self.style().polish(self)
+        self.duplicate_message.setVisible(duplicate)
+        width = self.duplicate_message.sizeHint().width() if duplicate else 0
+        self.setTextMargins(0, 0, width + 12 if duplicate else 0, 0)
+        self._position_message()
+
+    def _position_message(self):
+        width = self.duplicate_message.sizeHint().width()
+        self.duplicate_message.setGeometry(max(0, self.width() - width - 10), 0, width, self.height())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._position_message()
+
+
 class RoomNameField(QLineEdit):
     """Accept a room dragged from another room field or its handle."""
 
@@ -1260,7 +1290,7 @@ class MainWindow(QMainWindow):
         self.camera_names_scroll.setWidget(self.camera_names)
         layout.addWidget(self.camera_names_scroll, 2)
         entry = QHBoxLayout()
-        self.camera_entry = QLineEdit()
+        self.camera_entry = CameraEntryField()
         self.camera_entry.setPlaceholderText('Exact Paltalk username')
         add = QPushButton('Add')
         remove = QPushButton('Remove selected')
@@ -1336,11 +1366,24 @@ class MainWindow(QMainWindow):
         self.camera_export.clicked.connect(self.export_camera_names)
         self.camera_alphabetical.toggled.connect(self.camera_alphabetical_changed)
         self.camera_names.itemChanged.connect(self.camera_name_changed)
+        self.camera_entry.textChanged.connect(self.update_camera_duplicate)
+        model = self.camera_names.model()
+        model.rowsInserted.connect(self.update_camera_duplicate)
+        model.rowsRemoved.connect(self.update_camera_duplicate)
+        model.dataChanged.connect(self.update_camera_duplicate)
         self.camera_entry.returnPressed.connect(self.add_camera_name)
         remove.clicked.connect(self.remove_camera_name)
         self.camera_auto.toggled.connect(self.camera_auto_changed)
         self.camera_start.clicked.connect(self.start_cameras)
         self.camera_stop.clicked.connect(self.stop_cameras)
+
+    def update_camera_duplicate(self, *_args):
+        name = self.camera_entry.text().strip().casefold()
+        duplicate = bool(name and any(
+            self.camera_names.item(i).text().strip().casefold() == name
+            for i in range(self.camera_names.count())
+        ))
+        self.camera_entry.set_duplicate(duplicate)
 
     def camera_username_list(self):
         items = [self.camera_names.item(i) for i in range(self.camera_names.count())]

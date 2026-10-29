@@ -7,8 +7,9 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QListWidget
+from PySide6.QtCore import QMimeData, QUrl
 
-from paltalk_room_opener.main_window import MainWindow
+from paltalk_room_opener.main_window import MainWindow, TextImportButton
 
 
 class CameraImportTests(unittest.TestCase):
@@ -51,6 +52,28 @@ class CameraImportTests(unittest.TestCase):
         self.run_import(window, 'Bob\n')
         self.assertEqual(window.camera_names.count(), 1)
         self.assertEqual(window.camera_next_order, 2)
+
+    def test_text_file_drop_imports_and_rejects_other_files(self):
+        window = self.window(['Alice'])
+        button = TextImportButton('Import text')
+        button.fileDropped.connect(lambda path: MainWindow.import_camera_file(window, path))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'names.txt'
+            path.write_text('Alice\nBob\n', encoding='utf-8')
+            mime = QMimeData()
+            mime.setUrls([QUrl.fromLocalFile(str(path))])
+            event = Mock()
+            event.mimeData.return_value = mime
+            button.dragEnterEvent(event)
+            button.dropEvent(event)
+            self.assertEqual(window.camera_names.item(1).text(), 'Bob')
+            event.acceptProposedAction.assert_called()
+            mime.setUrls([QUrl.fromLocalFile(str(Path(directory) / 'other.png'))])
+            event.reset_mock()
+            button.dragEnterEvent(event)
+            button.dropEvent(event)
+            event.acceptProposedAction.assert_not_called()
+            self.assertEqual(window.camera_names.count(), 2)
 
 
 if __name__ == '__main__':

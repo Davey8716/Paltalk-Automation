@@ -3,7 +3,7 @@
 from pathlib import Path
 import re
 
-from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QDrag, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
@@ -15,6 +15,37 @@ from . import settings
 from .camera_name_list import CameraNameDelegate, CameraNameList
 from .styles import APP_STYLE
 from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
+
+
+class TextImportButton(QPushButton):
+    fileDropped = Signal(str)
+
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setAcceptDrops(True)
+
+    @staticmethod
+    def _text_file(mime):
+        urls = mime.urls() if mime.hasUrls() else []
+        if len(urls) == 1 and urls[0].isLocalFile():
+            path = Path(urls[0].toLocalFile())
+            if path.suffix.lower() == '.txt' and path.is_file():
+                return str(path)
+        return None
+
+    def dragEnterEvent(self, event):
+        if self._text_file(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        path = self._text_file(event.mimeData())
+        if path:
+            event.acceptProposedAction()
+            self.fileDropped.emit(path)
+        else:
+            event.ignore()
 
 
 class RoomNameField(QLineEdit):
@@ -1186,8 +1217,8 @@ class MainWindow(QMainWindow):
         self.camera_alphabetical.setObjectName('cameraAlphabetical')
         self.camera_alphabetical.setCheckable(True)
         sort_controls.addWidget(self.camera_alphabetical)
-        self.camera_import = QPushButton('Import text')
-        self.camera_import.setToolTip('Import usernames from a text file, one per line.')
+        self.camera_import = TextImportButton('Import text')
+        self.camera_import.setToolTip('Click or drop a text file to import usernames, one per line.')
         sort_controls.addWidget(self.camera_import)
         self.camera_export = QPushButton('Export to text')
         self.camera_export.setToolTip('Export the camera usernames to a text file.')
@@ -1288,6 +1319,7 @@ class MainWindow(QMainWindow):
             self.camera_log.appendPlainText(f'Could not load camera settings: {exc}')
         add.clicked.connect(self.add_camera_name)
         self.camera_import.clicked.connect(self.import_camera_names)
+        self.camera_import.fileDropped.connect(self.import_camera_file)
         self.camera_export.clicked.connect(self.export_camera_names)
         self.camera_alphabetical.toggled.connect(self.camera_alphabetical_changed)
         self.camera_names.itemChanged.connect(self.camera_name_changed)
@@ -1316,6 +1348,9 @@ class MainWindow(QMainWindow):
         filename, _ = QFileDialog.getOpenFileName(self, 'Import usernames', '', 'Text files (*.txt);;All files (*)')
         if not filename:
             return
+        MainWindow.import_camera_file(self, filename)
+
+    def import_camera_file(self, filename):
         try:
             lines = Path(filename).read_text(encoding='utf-8-sig').splitlines()
         except (OSError, UnicodeError) as exc:

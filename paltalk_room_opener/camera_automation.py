@@ -499,12 +499,13 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                     else:
                         status = 'not visible or ambiguous'
                     if not diagnostic_reported:
-                        read = ', '.join(repr(line) for line in scanner.ocr_lines) or '(none)'
-                        detected = ', '.join(f'{row[4]}: {_readings(row)!r}' for row in rows) or '(none)'
-                        log(f'Visible section text read by OCR: {read}.')
-                        log(f'OCR lines matched to camera buttons: {detected}.')
+                        read = '\n\n'.join(scanner.ocr_lines) or '(none)'
+                        detected = '\n\n'.join(f'{row[4]}: {_readings(row)!r}' for row in rows) or '(none)'
+                        diagnostics = [f'Visible section text read by OCR:\n\n{read}',
+                                       f'OCR lines matched to camera buttons:\n\n{detected}']
                         if scanner.ocr_comparisons:
-                            log('Unmatched OCR rows: ' + '; '.join(scanner.ocr_comparisons))
+                            diagnostics.append('Unmatched OCR rows:\n\n' + '\n\n'.join(scanner.ocr_comparisons))
+                        log('\n\n' + '\n\n'.join(diagnostics) + '\n')
                         diagnostic_reported = True
                 elif matches[0][1] == 'unknown':
                     status = 'camera icon not recognized'

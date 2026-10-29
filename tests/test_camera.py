@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 from paltalk_room_opener import settings
 from paltalk_room_opener.camera_automation import (
     CameraScanner, _badge_boxes, _button_section, _camera_error_message, _camera_state, _match_rows, _normal,
-    _ocr, _portrait_clip_offset, _row_text, _row_words, _section_words, _sections, _ScanStopped, watch_cameras,
+    _adjust_portrait_if_needed, _ocr, _portrait_clip_offset, _row_text, _row_words, _section_words, _sections, _ScanStopped, watch_cameras,
 )
 
 
@@ -21,6 +21,22 @@ class CameraTests(unittest.TestCase):
         self.assertEqual(_portrait_clip_offset(portrait, 4952), 33)
         self.assertEqual(_portrait_clip_offset(portrait, 4920), 0)
         self.assertEqual(_portrait_clip_offset(landscape, 1952), 0)
+
+    def test_portrait_toggle_is_checked_for_each_scan(self):
+        enabled = [False]
+        scanner = SimpleNamespace(portrait_adjustment_enabled=lambda: enabled[0])
+        window = SimpleNamespace(Current=SimpleNamespace(NativeWindowHandle=1))
+        rect = SimpleNamespace(X=10, Y=0, Width=100, Height=100)
+        with patch('paltalk_room_opener.camera_automation._reposition_clipped_portrait_window', return_value=True) as move:
+            _adjust_portrait_if_needed(scanner, window, rect, lambda _: None)
+            move.assert_not_called()
+            enabled[0] = True
+            with self.assertRaisesRegex(RuntimeError, 'Adjusted Paltalk'):
+                _adjust_portrait_if_needed(scanner, window, rect, lambda _: None)
+            move.assert_called_once_with(window, 110)
+            enabled[0] = False
+            _adjust_portrait_if_needed(scanner, window, rect, lambda _: None)
+            self.assertEqual(move.call_count, 1)
 
     def test_automation_errors_are_reported_without_dotnet_stack_trace(self):
         error = RuntimeError('Unrecognized error.\n   at MS.Internal.Automation.UiaCoreApi.CheckError(Int32 hr)')
@@ -42,7 +58,9 @@ class CameraTests(unittest.TestCase):
             root = Path(directory)
             with patch.object(settings, 'APP_DATA_DIR', root), patch.object(settings, 'CAMERA_SETTINGS_PATH', root / 'cameras.json'):
                 settings.save_camera_settings(['Dave8787', 'margot73'], True, True)
-                self.assertEqual(settings.load_camera_settings(), {'usernames': ['Dave8787', 'margot73'], 'start_on_paltalk': True, 'alphabetical': True})
+                self.assertEqual(settings.load_camera_settings(), {'usernames': ['Dave8787', 'margot73'], 'start_on_paltalk': True, 'alphabetical': True, 'portrait_adjustment': True})
+                settings.save_camera_settings(['Dave8787'], False, portrait_adjustment=False)
+                self.assertIs(settings.load_camera_settings()['portrait_adjustment'], False)
                 self.assertFalse((root / 'room_names.json').exists())
 
     def test_icon_states_and_ocr_whitespace(self):

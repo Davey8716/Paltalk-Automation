@@ -411,9 +411,10 @@ class CameraWorker(QThread):
     failed = Signal(str)
     live_status = Signal(object)
 
-    def __init__(self, names):
+    def __init__(self, names, portrait_adjustment=True):
         super().__init__()
         self.names = list(names)
+        self.portrait_adjustment = portrait_adjustment
         self.names_lock = threading.Lock()
         self.name_updates = queue.Queue()
 
@@ -421,6 +422,11 @@ class CameraWorker(QThread):
         with self.names_lock:
             self.names = list(names)
             self.name_updates.put(list(self.names))
+
+    def update_portrait_adjustment(self, enabled):
+        with self.names_lock:
+            self.portrait_adjustment = bool(enabled)
+            self.name_updates.put({'portrait_adjustment': self.portrait_adjustment})
 
     def run(self):
         while not self.isInterruptionRequested():
@@ -438,10 +444,12 @@ class CameraWorker(QThread):
     def run_helper(self, timeout=60):
         with self.names_lock:
             initial_names = list(self.names)
+            initial_adjustment = self.portrait_adjustment
             while not self.name_updates.empty():
                 self.name_updates.get_nowait()
         process = subprocess.Popen(
-            helper_command('camera_helper_process', json.dumps(initial_names, ensure_ascii=True)),
+            helper_command('camera_helper_process', json.dumps(initial_names, ensure_ascii=True),
+                           json.dumps(initial_adjustment)),
             cwd=str(Path(__file__).resolve().parent.parent), stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),

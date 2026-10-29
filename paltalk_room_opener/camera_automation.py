@@ -271,6 +271,18 @@ def _reposition_clipped_portrait_window(window, member_right):
     return True
 
 
+def _adjust_portrait_if_needed(scanner, window, rect, progress):
+    if getattr(scanner, 'portrait_adjustment_enabled', lambda: True)():
+        position = (window.Current.NativeWindowHandle, rect.X, rect.Y, rect.Width, rect.Height)
+        if getattr(scanner, '_portrait_adjustment', None) == position:
+            raise RuntimeError('Paltalk could not be moved far enough to reveal the camera buttons.')
+        if _reposition_clipped_portrait_window(window, rect.X + rect.Width):
+            scanner._portrait_adjustment = position
+            progress('adjusting Paltalk window for portrait display')
+            raise RuntimeError('Adjusted Paltalk to reveal camera buttons; retrying the scan.')
+    scanner._portrait_adjustment = None
+
+
 class CameraScanner:
     def __init__(self):
         # Match UI Automation physical pixels to screenshots on scaled displays.
@@ -315,14 +327,7 @@ class CameraScanner:
         window, member_list = lists[0]
         self.room_identity = tuple(member_list.GetRuntimeId())
         rect = member_list.Current.BoundingRectangle
-        position = (window.Current.NativeWindowHandle, rect.X, rect.Y, rect.Width, rect.Height)
-        if getattr(self, '_portrait_adjustment', None) == position:
-            raise RuntimeError('Paltalk could not be moved far enough to reveal the camera buttons.')
-        if _reposition_clipped_portrait_window(window, rect.X + rect.Width):
-            self._portrait_adjustment = position
-            progress('adjusting Paltalk window for portrait display')
-            raise RuntimeError('Adjusted Paltalk to reveal camera buttons; retrying the scan.')
-        self._portrait_adjustment = None
+        _adjust_portrait_if_needed(self, window, rect, progress)
         left, top = int(rect.X), int(rect.Y)
         width, height = int(rect.Width), int(rect.Height)
         if width < 30 or height < 30 or width > 3000 or height > 4000:
@@ -418,7 +423,8 @@ class CameraScanner:
         return True
 
 
-def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None, current_names=None, live_status=None):
+def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None, current_names=None, live_status=None,
+                  portrait_adjustment_enabled=None):
     if invoked is None:
         invoked = log
     if failed is None:
@@ -429,6 +435,7 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
         live_status = lambda names: None
     progress('starting camera scanner')
     scanner = CameraScanner()
+    scanner.portrait_adjustment_enabled = portrait_adjustment_enabled or (lambda: True)
     scanner.stopped = stopped
     scanner.progress = progress
     names = list(dict.fromkeys(name.strip() for name in names if name.strip()))

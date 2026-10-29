@@ -91,9 +91,10 @@ def save_admin_phrases(phrases):
     ADMIN_SETTINGS_PATH.write_text(json.dumps({'banned_phrases': phrases}, indent=2, ensure_ascii=False), encoding='utf-8')
 
 
-def save_camera_settings(names, start_on_paltalk, alphabetical=False, username_numbers=None, next_username_number=None):
+def save_camera_settings(names, start_on_paltalk, alphabetical=False, username_numbers=None, next_username_number=None, portrait_adjustment=True):
     APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    data = {"usernames": names, "start_on_paltalk": start_on_paltalk, "alphabetical": alphabetical}
+    data = {"usernames": names, "start_on_paltalk": start_on_paltalk, "alphabetical": alphabetical,
+            "portrait_adjustment": bool(portrait_adjustment)}
     if username_numbers is not None:
         data['username_numbers'] = username_numbers
         data['next_username_number'] = next_username_number

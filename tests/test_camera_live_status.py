@@ -29,3 +29,11 @@ class CameraLiveStatusTests(unittest.TestCase):
         MainWindow.update_camera_live_status(window, [])
         self.assertFalse(names.item(0).data(LIVE_ROLE))
         changed.assert_not_called()
+
+    def test_portrait_toggle_updates_watcher_and_saves(self):
+        window = SimpleNamespace(camera_portrait_adjustment=MagicMock(), camera_worker=MagicMock(),
+                                 save_camera_settings=MagicMock())
+        MainWindow.camera_portrait_adjustment_changed(window, False)
+        window.camera_portrait_adjustment.setText.assert_called_once_with('Portrait adjustment: Off')
+        window.camera_worker.update_portrait_adjustment.assert_called_once_with(False)
+        window.save_camera_settings.assert_called_once()

@@ -1304,10 +1304,15 @@ class MainWindow(QMainWindow):
         
         self.camera_start = QPushButton('Start')
         self.camera_stop = QPushButton('Stop')
+        self.camera_portrait_adjustment = QPushButton()
+        self.camera_portrait_adjustment.setObjectName('autoOpenButton')
+        self.camera_portrait_adjustment.setCheckable(True)
+        self.camera_portrait_adjustment.setChecked(True)
+        self.camera_portrait_adjustment.setText('Portrait adjustment: On')
 
         
         self.camera_stop.setEnabled(False)
-        for button in (self.camera_auto, self.camera_start, self.camera_stop):
+        for button in (self.camera_auto, self.camera_start, self.camera_stop, self.camera_portrait_adjustment):
             button.setFixedSize(200, 35)
             controls.addWidget(button)
         self.camera_start.setFixedSize(150, 35)
@@ -1354,6 +1359,10 @@ class MainWindow(QMainWindow):
                     self.camera_next_order = max(self.camera_next_order, number + 1)
                 self.renumber_camera_names()
             self.camera_auto.setChecked(bool(data.get('start_on_paltalk', False)))
+            portrait_adjustment = data.get('portrait_adjustment', True)
+            self.camera_portrait_adjustment.setChecked(portrait_adjustment if type(portrait_adjustment) is bool else True)
+            self.camera_portrait_adjustment.setText(
+                'Portrait adjustment: On' if self.camera_portrait_adjustment.isChecked() else 'Portrait adjustment: Off')
             self.camera_alphabetical.setChecked(bool(data.get('alphabetical', False)))
             if self.camera_alphabetical.isChecked():
                 self.sort_camera_names(True)
@@ -1373,6 +1382,7 @@ class MainWindow(QMainWindow):
         self.camera_entry.returnPressed.connect(self.add_camera_name)
         remove.clicked.connect(self.remove_camera_name)
         self.camera_auto.toggled.connect(self.camera_auto_changed)
+        self.camera_portrait_adjustment.toggled.connect(self.camera_portrait_adjustment_changed)
         self.camera_start.clicked.connect(self.start_cameras)
         self.camera_stop.clicked.connect(self.stop_cameras)
 
@@ -1656,7 +1666,7 @@ class MainWindow(QMainWindow):
             settings.save_camera_settings(self.camera_username_list(), self.camera_auto.isChecked(),
                                           self.camera_alphabetical.isChecked(),
                                           [item.data(Qt.ItemDataRole.UserRole) for item in items],
-                                          self.camera_next_order)
+                                          self.camera_next_order, self.camera_portrait_adjustment.isChecked())
             self.camera_log.appendPlainText('Camera settings saved.')
             return True
         except OSError as exc:
@@ -1669,6 +1679,12 @@ class MainWindow(QMainWindow):
             self.camera_auto_handled = False
             self.check_for_paltalk_start()
 
+    def camera_portrait_adjustment_changed(self, enabled):
+        self.camera_portrait_adjustment.setText('Portrait adjustment: On' if enabled else 'Portrait adjustment: Off')
+        if self.camera_worker:
+            self.camera_worker.update_portrait_adjustment(enabled)
+        self.save_camera_settings()
+
     def start_cameras(self, automatic=False):
         if self.camera_worker:
             return
@@ -1678,7 +1694,7 @@ class MainWindow(QMainWindow):
             return
         if not self.save_camera_settings():
             return
-        self.camera_worker = CameraWorker(names)
+        self.camera_worker = CameraWorker(names, self.camera_portrait_adjustment.isChecked())
         self.camera_worker.message.connect(self.camera_log.appendPlainText)
         self.camera_worker.invoked.connect(self.camera_invoked_log.appendPlainText)
         self.camera_worker.failed.connect(self.camera_failed_log.appendPlainText)

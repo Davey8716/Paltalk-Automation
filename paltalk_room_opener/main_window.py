@@ -523,6 +523,7 @@ class MainWindow(QMainWindow):
             ("Start in tray", self.start_in_tray),
             ("Open rooms when Paltalk starts", self.auto_open_button),
             ("Start cameras when Paltalk starts", self.camera_auto),
+            ("Portrait adjustment", self.camera_portrait_adjustment),
         ):
             action = menu.addAction(text)
             action.setCheckable(True)

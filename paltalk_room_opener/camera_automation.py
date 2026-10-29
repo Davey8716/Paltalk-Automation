@@ -216,10 +216,20 @@ def _match_rows(rows, names, target):
     """Return matching rows and whether any row also names another saved user."""
     configured = {_normal(name) for name in names}
     wanted = _normal(target)
+    def punctuation_key(value):
+        return value.replace('-', '_')
+
     matches = []
     conflict = False
     for row in rows:
-        found = {_normal(value) for value in _readings(row) if value} & configured
+        readings = {_normal(value) for value in _readings(row) if value}
+        found = set()
+        for reading in readings:
+            if reading in configured:
+                found.add(reading)
+            else:
+                found.update(name for name in configured
+                             if punctuation_key(name) == punctuation_key(reading))
         if wanted in found:
             matches.append(row)
             if len(found) > 1:

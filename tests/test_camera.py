@@ -152,6 +152,27 @@ class CameraTests(unittest.TestCase):
         rows.append((('Thai_mafia 1',), 'available', object(), 30))
         self.assertEqual(len(_match_rows(rows, names, 'Thai_mafia1')[0]), 2)
 
+    def test_punctuation_fallback_and_exact_precedence(self):
+        for saved, reading in [('hiraya_01', 'hiraya-01'), ('hiraya-01', 'hiraya_01')]:
+            rows = [((reading,), 'available', object(), 10)]
+            matches, conflict = _match_rows(rows, [saved], saved)
+            self.assertEqual(len(matches), 1)
+            self.assertFalse(conflict)
+        rows = [(('name-one',), 'available', object(), 10)]
+        self.assertEqual(_match_rows(rows, ['name-one', 'name_one'], 'name_one')[0], [])
+        self.assertFalse(_match_rows(rows, ['name-one', 'name_one'], 'name-one')[1])
+
+    def test_punctuation_fallback_rejects_ambiguity_and_duplicate_rows(self):
+        row = (('a_b_c',), 'available', object(), 10)
+        names = ['a-b_c', 'a_b-c']
+        self.assertTrue(_match_rows([row], names, names[0])[1])
+        scanner = CameraScanner.__new__(CameraScanner)
+        scanner.scan = lambda: [row]
+        self.assertFalse(scanner.open_if_available(names[0], configured_names=names))
+        scanner.scan = lambda: [(('name-1',), 'available', object(), 10),
+                                (('name-1',), 'available', object(), 30)]
+        self.assertFalse(scanner.open_if_available('name_1', configured_names=['name_1']))
+
     def test_recheck_skips_conflicting_saved_names(self):
         scanner = CameraScanner.__new__(CameraScanner)
         scanner.scan = lambda: [(('Thai_mafia1', 'Thai_mafial'), 'available', object(), 10)]

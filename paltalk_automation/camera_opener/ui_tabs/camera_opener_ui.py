@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QFileDialog, QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QStyle, QVBoxLayout, QWidget)
 
 from paltalk_automation import settings
+from paltalk_automation.camera_opener.ui_tabs.manual_camera_prompt import ManualCameraPromptController
 from paltalk_automation.camera_opener.ui_tabs.camera_entry_field import CameraEntryField
 from paltalk_automation.camera_opener.ui_tabs.text_import_button import TextImportButton
 from paltalk_automation.camera_opener.ui_tabs.camera_name_list import CameraNameDelegate, CameraNameList, LIVE_ROLE
@@ -15,6 +16,12 @@ from paltalk_automation.camera_opener.backend.camera_worker import CameraWorker
 
 
 class CameraOpenerUi:
+    def initialize_camera_state(self):
+        self.camera_worker = None
+        self.camera_prompts = ManualCameraPromptController(self)
+        self.camera_restart_pending = False
+        self.camera_auto_handled = False
+
     def create_camera_tab(self, tabs):
         page = QWidget()
         layout = QVBoxLayout(page)

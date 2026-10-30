@@ -11,6 +11,23 @@ class RoomOpenerUi:
     AUTO_OPEN_DELAY_MS = 5000
     AUTO_OPEN_MAX_ATTEMPTS = 6
 
+    def bind_room_widgets(self):
+        self.auto_open_button = self.room_opener_tab.auto_open_button
+        self.close_all_button = self.room_opener_tab.close_all_button
+        self.delay = self.room_opener_tab.delay
+        self.log = self.room_opener_tab.log
+        self.mode_group = self.room_opener_tab.mode_group
+        self.open_room_buttons = self.room_opener_tab.open_room_buttons
+        self.other_rooms_layout = self.room_opener_tab.other_rooms_layout
+        self.other_rooms_scroll = self.room_opener_tab.other_rooms_scroll
+        self.recent_rooms_button = self.room_opener_tab.recent_rooms_button
+        self.regular_button = self.room_opener_tab.regular_button
+        self.room_labels = self.room_opener_tab.room_labels
+        self.room_tray_status_label = self.room_opener_tab.room_tray_status_label
+        self.rooms = self.room_opener_tab.rooms
+        self.start_button = self.room_opener_tab.start_button
+        self.vip_button = self.room_opener_tab.vip_button
+
     def initialize_room_state(self):
         self.worker = None
         self.close_room_worker = None

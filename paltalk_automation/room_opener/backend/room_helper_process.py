@@ -3,7 +3,7 @@
 import json
 import sys
 
-from .automation import close_room, navigate_my_rooms, open_rooms, restore_paltalk, room_states, recently_visited_rooms
+from paltalk_automation.room_opener.backend.automation import close_room, navigate_my_rooms, open_rooms, restore_paltalk, room_states, recently_visited_rooms
 
 
 def send(kind, value):

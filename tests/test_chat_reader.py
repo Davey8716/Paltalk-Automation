@@ -1,6 +1,6 @@
 import unittest
 
-from paltalk_room_opener.chat_reader import associate_messages
+from paltalk_automation.admin_actions.backend.chat_reader import associate_messages
 
 
 class ChatAssociationTests(unittest.TestCase):

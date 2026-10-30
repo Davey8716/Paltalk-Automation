@@ -2,7 +2,7 @@
 
 A Windows desktop app that invokes up to five named Paltalk room tiles in order.
 
-`main.py` is the main entry point. Application code is organized in `paltalk_room_opener/` by responsibility: UI window, settings, worker thread, Windows UI Automation, and styling.
+`main.py` is the main entry point. Application code lives in `paltalk_automation/`, with feature folders for room opening, camera opening, advert blocking, admin actions, and the mic timer. Each feature has `ui_tabs/` and `backend/` folders; shared window, settings, workers, and styling remain at the package level.
 
 ## Setup
 
@@ -13,13 +13,13 @@ Install the 64-bit CPython 3.14 release, then in PowerShell from this folder run
 & "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe" main.py
 ```
 
-Use the same Python 3.14 interpreter to install dependencies, run the app, and build the executable. Do not add the entire project folder as data; the Python source is collected by PyInstaller. Include the app's required non-Python resources, such as `paltalk_room_opener/windows_ocr.ps1`.
+Use the same Python 3.14 interpreter to install dependencies, run the app, and build the executable. Do not add the entire project folder as data; the Python source is collected by PyInstaller. Include the app's required non-Python resources, such as `paltalk_automation/camera_opener/backend/windows_ocr.ps1`.
 
 Build a windowed executable with the helper modules and Windows automation library included:
 
 ```powershell
 $python = "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe"
-& $python -m PyInstaller --noconfirm --onefile --windowed --name "Paltalk Automation" --icon "Icons/Paltalk Automation.ico" --hidden-import clr --add-data "Icons/Paltalk Automation.ico;Icons" --add-data "paltalk_room_opener/windows_ocr.ps1;paltalk_room_opener" main.py
+& $python -m PyInstaller --noconfirm --onefile --windowed --name "Paltalk Automation" --icon "Icons/Paltalk Automation.ico" --hidden-import clr --add-data "Icons/Paltalk Automation.ico;Icons" --add-data "paltalk_automation/camera_opener/backend/windows_ocr.ps1;paltalk_automation/camera_opener/backend" main.py
 ```
 
 The executable is created in `dist`. Quit any running copy from the notification area before replacing it or pinning the new executable.

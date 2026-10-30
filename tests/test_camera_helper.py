@@ -9,7 +9,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
-from paltalk_room_opener.worker import CameraWorker
+from paltalk_automation.camera_opener.backend.camera_worker import CameraWorker
 
 
 class CameraHelperTests(unittest.TestCase):
@@ -20,7 +20,7 @@ class CameraHelperTests(unittest.TestCase):
     @staticmethod
     def launch_script(code):
         real_popen = subprocess.Popen
-        return patch('paltalk_room_opener.worker.subprocess.Popen',
+        return patch('paltalk_automation.camera_opener.backend.camera_worker.subprocess.Popen',
                      side_effect=lambda *args, **kwargs: real_popen([sys.executable, '-c', code], **kwargs))
 
     def test_timeout_while_opening_reports_unknown_outcome(self):

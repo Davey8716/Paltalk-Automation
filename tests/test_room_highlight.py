@@ -7,7 +7,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton
 
-from paltalk_room_opener.main_window import MainWindow
+from paltalk_automation.main_window import MainWindow
 
 
 class RoomHighlightTests(unittest.TestCase):
@@ -131,14 +131,14 @@ class RoomHighlightTests(unittest.TestCase):
                                  log=MagicMock(),
                                  room_states_received=lambda _: None,
                                  room_state_finished=lambda: None)
-        with patch('paltalk_room_opener.main_window.RoomStateWorker', return_value=worker):
+        with patch('paltalk_automation.main_window.RoomStateWorker', return_value=worker):
             MainWindow.refresh_room_states(window)
         worker.start.assert_called_once()
 
     def test_refresh_does_not_overlap_single_room_opening(self):
         window = SimpleNamespace(room_state_worker=None, _quitting=False,
                                  worker=SimpleNamespace(check_existing=True), close_room_worker=None)
-        with patch('paltalk_room_opener.main_window.RoomStateWorker') as worker:
+        with patch('paltalk_automation.main_window.RoomStateWorker') as worker:
             MainWindow.refresh_room_states(window)
         worker.assert_not_called()
 
@@ -153,7 +153,7 @@ class RoomHighlightTests(unittest.TestCase):
             _quitting=False, start_button=MagicMock(), close_all_button=MagicMock(),
             open_room_buttons=[], set_button_enabled=MagicMock(), log=MagicMock(), finished=MagicMock(),
         )
-        with patch('paltalk_room_opener.main_window.RoomWorker', return_value=room_worker):
+        with patch('paltalk_automation.main_window.RoomWorker', return_value=room_worker):
             MainWindow.start_room_worker(window, ['Alpha'], False, 'room: Alpha', check_existing=True)
         scan.requestInterruption.assert_called_once()
         room_worker.start.assert_not_called()

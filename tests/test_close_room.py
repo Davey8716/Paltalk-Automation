@@ -2,9 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from paltalk_room_opener.automation import (PaltalkWindowNotFound, _paltalk_main_window,
+from paltalk_automation.room_opener.backend.automation import (PaltalkWindowNotFound, _paltalk_main_window,
                                              _wait_for_paltalk_main_window, _reopen_paltalk, close_room, room_states, restore_paltalk)
-from paltalk_room_opener.worker import CloseAllRoomsWorker
+from paltalk_automation.room_opener.backend.room_workers import CloseAllRoomsWorker
 
 
 class CloseRoomTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class CloseRoomTests(unittest.TestCase):
         user32.GetWindowTextLengthW.return_value = 7
         user32.GetWindowTextW.side_effect = get_title
         user32.GetClassNameW.side_effect = get_class
-        with patch('paltalk_room_opener.automation.psutil.process_iter', return_value=[SimpleNamespace(info={'pid': 42, 'name': 'Paltalk.exe'})]):
+        with patch('paltalk_automation.room_opener.backend.automation.psutil.process_iter', return_value=[SimpleNamespace(info={'pid': 42, 'name': 'Paltalk.exe'})]):
             self.assertEqual(_paltalk_main_window(user32), 101)
 
     def test_main_window_selection_prefers_paltalk_main_qt_window(self):
@@ -49,28 +49,28 @@ class CloseRoomTests(unittest.TestCase):
         user32.GetWindowTextLengthW.return_value = 7
         user32.GetWindowTextW.side_effect = get_title
         user32.GetClassNameW.side_effect = get_class
-        with patch('paltalk_room_opener.automation.psutil.process_iter', return_value=[SimpleNamespace(info={'pid': 42, 'name': 'Paltalk.exe'})]):
+        with patch('paltalk_automation.room_opener.backend.automation.psutil.process_iter', return_value=[SimpleNamespace(info={'pid': 42, 'name': 'Paltalk.exe'})]):
             self.assertEqual(_paltalk_main_window(user32), 101)
 
     def test_main_window_unavailable_is_an_error(self):
         user32 = MagicMock()
         user32.EnumWindows.return_value = True
-        with patch('paltalk_room_opener.automation.psutil.process_iter', return_value=[]), \
+        with patch('paltalk_automation.room_opener.backend.automation.psutil.process_iter', return_value=[]), \
              self.assertRaisesRegex(RuntimeError, r'0 Paltalk process\(es\); top-level: 0, unowned: 0'):
             _paltalk_main_window(user32)
 
     def test_window_discovery_retries_until_window_appears(self):
-        with patch('paltalk_room_opener.automation._paltalk_main_window',
+        with patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window',
                    side_effect=[PaltalkWindowNotFound('not ready'), 123]) as find, \
-             patch('paltalk_room_opener.automation.time.monotonic', side_effect=[0, 0, 0]), \
-             patch('paltalk_room_opener.automation.time.sleep'):
+             patch('paltalk_automation.room_opener.backend.automation.time.monotonic', side_effect=[0, 0, 0]), \
+             patch('paltalk_automation.room_opener.backend.automation.time.sleep'):
             self.assertEqual(_wait_for_paltalk_main_window(MagicMock()), 123)
         self.assertEqual(find.call_count, 2)
 
     def test_window_discovery_times_out_with_last_diagnostic(self):
-        with patch('paltalk_room_opener.automation._paltalk_main_window',
+        with patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window',
                    side_effect=PaltalkWindowNotFound('2 eligible windows')), \
-             patch('paltalk_room_opener.automation.time.monotonic', side_effect=[0, 4]), \
+             patch('paltalk_automation.room_opener.backend.automation.time.monotonic', side_effect=[0, 4]), \
              self.assertRaisesRegex(PaltalkWindowNotFound, '2 eligible windows'):
             _wait_for_paltalk_main_window(MagicMock())
 
@@ -83,7 +83,7 @@ class CloseRoomTests(unittest.TestCase):
         user32.GetWindowTextLengthW.return_value = 7
         user32.GetWindowTextW.side_effect = lambda hwnd, buffer, size: setattr(buffer, 'value', 'Paltalk')
         user32.GetClassNameW.side_effect = lambda hwnd, buffer, size: setattr(buffer, 'value', 'Qt6111QWindowOwnDCIcon')
-        with patch('paltalk_room_opener.automation.psutil.process_iter', return_value=[SimpleNamespace(info={'pid': 42, 'name': 'Paltalk.exe'})]), \
+        with patch('paltalk_automation.room_opener.backend.automation.psutil.process_iter', return_value=[SimpleNamespace(info={'pid': 42, 'name': 'Paltalk.exe'})]), \
              self.assertRaisesRegex(PaltalkWindowNotFound, r'title matches: 2, main-class matches: 2'):
             _paltalk_main_window(user32)
 
@@ -93,16 +93,16 @@ class CloseRoomTests(unittest.TestCase):
                 user32 = MagicMock()
                 user32.IsWindowVisible.side_effect = [initial_visible, True, True]
                 user32.IsZoomed.side_effect = [False, False, True] if initial_visible else [False, True]
-                with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-                     patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
-                     patch('paltalk_room_opener.automation.time.sleep'):
+                with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+                     patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', return_value=123), \
+                     patch('paltalk_automation.room_opener.backend.automation.time.sleep'):
                     restore_paltalk()
                 user32.ShowWindowAsync.assert_called_once_with(123, 3)
 
     def test_already_maximized_window_needs_no_restore(self):
         user32 = MagicMock()
-        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123):
+        with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', return_value=123):
             restore_paltalk()
         user32.ShowWindowAsync.assert_not_called()
 
@@ -110,20 +110,20 @@ class CloseRoomTests(unittest.TestCase):
         user32 = MagicMock()
         user32.IsWindowVisible.side_effect = [False, True]
         user32.IsIconic.return_value = False
-        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
-             patch('paltalk_room_opener.automation._reopen_paltalk') as reopen, \
-             patch('paltalk_room_opener.automation.time.sleep'):
+        with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', return_value=123), \
+             patch('paltalk_automation.room_opener.backend.automation._reopen_paltalk') as reopen, \
+             patch('paltalk_automation.room_opener.backend.automation.time.sleep'):
             restore_paltalk()
         reopen.assert_called_once_with()
 
     def test_missing_main_window_is_reopened_from_tray(self):
         user32 = MagicMock()
         missing = PaltalkWindowNotFound('no main window', processes=1, title_matches=0)
-        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-             patch('paltalk_room_opener.automation._wait_for_paltalk_main_window', side_effect=[missing, 123]) as find, \
-             patch('paltalk_room_opener.automation._reopen_paltalk') as reopen, \
-             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123):
+        with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_automation.room_opener.backend.automation._wait_for_paltalk_main_window', side_effect=[missing, 123]) as find, \
+             patch('paltalk_automation.room_opener.backend.automation._reopen_paltalk') as reopen, \
+             patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', return_value=123):
             restore_paltalk()
         reopen.assert_called_once_with()
         self.assertEqual(find.call_count, 2)
@@ -131,27 +131,27 @@ class CloseRoomTests(unittest.TestCase):
     def test_ambiguous_main_windows_do_not_click_tray(self):
         user32 = MagicMock()
         ambiguous = PaltalkWindowNotFound('ambiguous', processes=1, title_matches=2)
-        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-             patch('paltalk_room_opener.automation._wait_for_paltalk_main_window', side_effect=ambiguous), \
-             patch('paltalk_room_opener.automation._desktop_context', return_value='test desktop'), \
-             patch('paltalk_room_opener.automation._reopen_paltalk') as reopen, \
+        with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_automation.room_opener.backend.automation._wait_for_paltalk_main_window', side_effect=ambiguous), \
+             patch('paltalk_automation.room_opener.backend.automation._desktop_context', return_value='test desktop'), \
+             patch('paltalk_automation.room_opener.backend.automation._reopen_paltalk') as reopen, \
              self.assertRaisesRegex(PaltalkWindowNotFound, 'ambiguous'):
             restore_paltalk()
         reopen.assert_not_called()
 
     def test_tray_restore_error_is_reported(self):
         missing = PaltalkWindowNotFound('no main window', processes=1, title_matches=0)
-        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=MagicMock()), \
-             patch('paltalk_room_opener.automation._wait_for_paltalk_main_window', side_effect=missing), \
-             patch('paltalk_room_opener.automation._reopen_paltalk', side_effect=RuntimeError('executable unavailable')), \
+        with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=MagicMock()), \
+             patch('paltalk_automation.room_opener.backend.automation._wait_for_paltalk_main_window', side_effect=missing), \
+             patch('paltalk_automation.room_opener.backend.automation._reopen_paltalk', side_effect=RuntimeError('executable unavailable')), \
              self.assertRaisesRegex(RuntimeError, 'Could not reopen Paltalk: executable unavailable'):
             restore_paltalk()
 
     def test_reopen_uses_running_process_executable(self):
         process = SimpleNamespace(info={'name': 'Paltalk.exe', 'exe': r'C:\Paltalk\Paltalk.exe'})
-        with patch('paltalk_room_opener.automation.psutil.process_iter', return_value=[process]), \
-             patch('paltalk_room_opener.automation.Path.is_file', return_value=True), \
-             patch('paltalk_room_opener.automation.subprocess.Popen') as launch:
+        with patch('paltalk_automation.room_opener.backend.automation.psutil.process_iter', return_value=[process]), \
+             patch('paltalk_automation.room_opener.backend.automation.Path.is_file', return_value=True), \
+             patch('paltalk_automation.room_opener.backend.automation.subprocess.Popen') as launch:
             _reopen_paltalk()
         launch.assert_called_once_with([r'C:\Paltalk\Paltalk.exe'], cwd=r'C:\Paltalk')
 
@@ -159,8 +159,8 @@ class CloseRoomTests(unittest.TestCase):
         process = SimpleNamespace(info={'name': 'Paltalk.exe', 'exe': r'C:\Paltalk\Paltalk.exe'})
         for processes in ([], [process, process]):
             with self.subTest(processes=len(processes)), \
-                 patch('paltalk_room_opener.automation.psutil.process_iter', return_value=processes), \
-                 patch('paltalk_room_opener.automation.subprocess.Popen') as launch, \
+                 patch('paltalk_automation.room_opener.backend.automation.psutil.process_iter', return_value=processes), \
+                 patch('paltalk_automation.room_opener.backend.automation.subprocess.Popen') as launch, \
                  self.assertRaisesRegex(RuntimeError, 'uniquely identify'):
                 _reopen_paltalk()
             launch.assert_not_called()
@@ -171,9 +171,9 @@ class CloseRoomTests(unittest.TestCase):
         user32.IsWindowVisible.return_value = False
         user32.IsWindowVisible.side_effect = [False, False, True]
         user32.IsZoomed.return_value = True
-        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-             patch('paltalk_room_opener.automation._paltalk_main_window', side_effect=[123, 456, 456]), \
-             patch('paltalk_room_opener.automation.time.sleep'):
+        with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', side_effect=[123, 456, 456]), \
+             patch('paltalk_automation.room_opener.backend.automation.time.sleep'):
             restore_paltalk()
         self.assertEqual([call.args for call in user32.ShowWindowAsync.call_args_list], [(123, 3), (456, 3)])
 
@@ -183,9 +183,9 @@ class CloseRoomTests(unittest.TestCase):
                 user32 = MagicMock()
                 user32.IsWindowVisible.return_value = False
                 user32.ShowWindowAsync.return_value = request_accepted
-                with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-                     patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
-                     patch('paltalk_room_opener.automation.time.monotonic', side_effect=[0, 0, 6]), \
+                with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+                     patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', return_value=123), \
+                     patch('paltalk_automation.room_opener.backend.automation.time.monotonic', side_effect=[0, 0, 6]), \
                      self.assertRaises(RuntimeError):
                     restore_paltalk()
 
@@ -193,9 +193,9 @@ class CloseRoomTests(unittest.TestCase):
         worker = CloseAllRoomsWorker(['Alpha'])
         messages = []
         worker.message.connect(messages.append)
-        with patch('paltalk_room_opener.worker.restore_paltalk', side_effect=RuntimeError('window unavailable')), \
-             patch('paltalk_room_opener.worker.room_states') as states, \
-             patch('paltalk_room_opener.worker.close_room') as close:
+        with patch('paltalk_automation.room_opener.backend.room_workers.restore_paltalk', side_effect=RuntimeError('window unavailable')), \
+             patch('paltalk_automation.room_opener.backend.room_workers.room_states') as states, \
+             patch('paltalk_automation.room_opener.backend.room_workers.close_room') as close:
             worker.run()
         states.assert_not_called()
         close.assert_not_called()
@@ -205,9 +205,9 @@ class CloseRoomTests(unittest.TestCase):
         worker = CloseAllRoomsWorker(['Alpha', 'Beta'])
         messages = []
         worker.message.connect(messages.append)
-        with patch('paltalk_room_opener.worker.restore_paltalk') as restore, \
-             patch('paltalk_room_opener.worker.room_states', return_value={'Alpha': True, 'Beta': True}), \
-             patch('paltalk_room_opener.worker.close_room', side_effect=[RuntimeError('failure'), None]) as close:
+        with patch('paltalk_automation.room_opener.backend.room_workers.restore_paltalk') as restore, \
+             patch('paltalk_automation.room_opener.backend.room_workers.room_states', return_value={'Alpha': True, 'Beta': True}), \
+             patch('paltalk_automation.room_opener.backend.room_workers.close_room', side_effect=[RuntimeError('failure'), None]) as close:
             worker.run()
         restore.assert_called_once()
         self.assertEqual([call.args[0] for call in close.call_args_list], ['Alpha', 'Beta'])
@@ -216,9 +216,9 @@ class CloseRoomTests(unittest.TestCase):
     def test_close_all_checks_state_after_restoring_and_skips_closed_rooms(self):
         worker = CloseAllRoomsWorker(['Alpha', 'Beta'])
         events = []
-        with patch('paltalk_room_opener.worker.restore_paltalk', side_effect=lambda: events.append('restore')), \
-             patch('paltalk_room_opener.worker.room_states', side_effect=lambda names: events.append('check') or {'Alpha': False, 'Beta': True}), \
-             patch('paltalk_room_opener.worker.close_room', side_effect=lambda name, log: events.append(name)):
+        with patch('paltalk_automation.room_opener.backend.room_workers.restore_paltalk', side_effect=lambda: events.append('restore')), \
+             patch('paltalk_automation.room_opener.backend.room_workers.room_states', side_effect=lambda names: events.append('check') or {'Alpha': False, 'Beta': True}), \
+             patch('paltalk_automation.room_opener.backend.room_workers.close_room', side_effect=lambda name, log: events.append(name)):
             worker.run()
         self.assertEqual(events, ['restore', 'check', 'Beta'])
 
@@ -226,15 +226,15 @@ class CloseRoomTests(unittest.TestCase):
         button = SimpleNamespace(Current=SimpleNamespace(AutomationId='Room close: The Garage'))
         user32 = MagicMock()
         user32.IsIconic.return_value = False
-        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
-             patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
-             patch('paltalk_room_opener.automation._close_buttons', return_value=[button]):
+        with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', return_value=123), \
+             patch('paltalk_automation.room_opener.backend.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
+             patch('paltalk_automation.room_opener.backend.automation._close_buttons', return_value=[button]):
             self.assertEqual(room_states(['The Garage', 'Other']), {'The Garage': True, 'Other': False})
-        with patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-             patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
-             patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
-             patch('paltalk_room_opener.automation._close_buttons', return_value=[button, button]):
+        with patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+             patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', return_value=123), \
+             patch('paltalk_automation.room_opener.backend.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), object()]), \
+             patch('paltalk_automation.room_opener.backend.automation._close_buttons', return_value=[button, button]):
             self.assertEqual(room_states(['The Garage']), {})
 
     def test_hidden_or_minimized_window_has_unavailable_state(self):
@@ -243,9 +243,9 @@ class CloseRoomTests(unittest.TestCase):
             user32.IsWindowVisible.return_value = visible
             user32.IsIconic.return_value = iconic
             with self.subTest(visible=visible, iconic=iconic), \
-                 patch('paltalk_room_opener.automation.ctypes.WinDLL', return_value=user32), \
-                 patch('paltalk_room_opener.automation._paltalk_main_window', return_value=123), \
-                 patch('paltalk_room_opener.automation._close_buttons') as buttons:
+                 patch('paltalk_automation.room_opener.backend.automation.ctypes.WinDLL', return_value=user32), \
+                 patch('paltalk_automation.room_opener.backend.automation._paltalk_main_window', return_value=123), \
+                 patch('paltalk_automation.room_opener.backend.automation._close_buttons') as buttons:
                 self.assertIsNone(room_states(['Alpha']))
                 buttons.assert_not_called()
 
@@ -274,8 +274,8 @@ class CloseRoomTests(unittest.TestCase):
                                      PropertyCondition=lambda *args: args,
                                      InvokePattern=SimpleNamespace(Pattern=1))
         logs = []
-        with patch('paltalk_room_opener.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), automation]), \
-             patch('paltalk_room_opener.automation.psutil.process_iter', return_value=[SimpleNamespace(info={'pid': 42, 'name': 'Paltalk.exe'})]):
+        with patch('paltalk_automation.room_opener.backend.automation.import_module', side_effect=[SimpleNamespace(AddReference=lambda _: None), automation]), \
+             patch('paltalk_automation.room_opener.backend.automation.psutil.process_iter', return_value=[SimpleNamespace(info={'pid': 42, 'name': 'Paltalk.exe'})]):
             close_room('The Garage', logs.append)
         self.assertTrue(button.invoked)
         self.assertIn('Invoked close', logs[0])

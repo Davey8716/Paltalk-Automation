@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-from paltalk_room_opener.automation import _navigate_my_rooms
+from paltalk_automation.room_opener.backend.automation import _navigate_my_rooms
 
 
 class MyRoomsNavigationTests(unittest.TestCase):
@@ -35,7 +35,7 @@ class MyRoomsNavigationTests(unittest.TestCase):
         self.window.FindAll.side_effect = lambda scope, condition: self.controls.get(condition[0][1], [])
 
     def test_selected_tab_is_not_toggled(self):
-        with patch('paltalk_room_opener.automation._paltalk_windows', return_value=[self.window]):
+        with patch('paltalk_automation.room_opener.backend.automation._paltalk_windows', return_value=[self.window]):
             _navigate_my_rooms(self.api)
         self.browse_invoke.Invoke.assert_called_once()
         self.rooms_invoke.Invoke.assert_not_called()
@@ -44,7 +44,7 @@ class MyRoomsNavigationTests(unittest.TestCase):
     def test_open_room_view_uses_rooms_navigation(self):
         self.controls['Browse Chat Rooms'] = []
         self.toggle.Current.ToggleState = 'off'
-        with patch('paltalk_room_opener.automation._paltalk_windows', return_value=[self.window]):
+        with patch('paltalk_automation.room_opener.backend.automation._paltalk_windows', return_value=[self.window]):
             _navigate_my_rooms(self.api)
         self.rooms_invoke.Invoke.assert_called_once()
         self.browse_invoke.Invoke.assert_not_called()
@@ -52,14 +52,14 @@ class MyRoomsNavigationTests(unittest.TestCase):
 
     def test_other_tab_is_selected(self):
         self.toggle.Current.ToggleState = 'off'
-        with patch('paltalk_room_opener.automation._paltalk_windows', return_value=[self.window]):
+        with patch('paltalk_automation.room_opener.backend.automation._paltalk_windows', return_value=[self.window]):
             _navigate_my_rooms(self.api)
         self.tab_invoke.Invoke.assert_called_once()
         self.assertEqual(self.toggle.Current.ToggleState, 'on')
 
     def test_missing_control_and_stop_are_reported(self):
-        with patch('paltalk_room_opener.automation._paltalk_windows', return_value=[]), \
-             patch('paltalk_room_opener.automation.time.monotonic', side_effect=[0, 6]):
+        with patch('paltalk_automation.room_opener.backend.automation._paltalk_windows', return_value=[]), \
+             patch('paltalk_automation.room_opener.backend.automation.time.monotonic', side_effect=[0, 6]):
             with self.assertRaisesRegex(RuntimeError, 'room navigation button'):
                 _navigate_my_rooms(self.api)
         with self.assertRaisesRegex(RuntimeError, 'stopped'):

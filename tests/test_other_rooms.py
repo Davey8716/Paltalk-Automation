@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QVBoxLayout, QWidget
-from paltalk_room_opener.automation import _discovered_room_names
-from paltalk_room_opener.main_window import MainWindow
+from paltalk_automation.room_opener.backend.automation import _discovered_room_names
+from paltalk_automation.main_window import MainWindow
 
 
 class OtherRoomsTests(unittest.TestCase):

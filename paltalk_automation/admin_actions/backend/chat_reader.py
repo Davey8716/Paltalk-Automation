@@ -5,7 +5,7 @@ from importlib import import_module
 
 import psutil
 
-from .camera_automation import _uia
+from paltalk_automation.camera_opener.backend.camera_automation import _uia
 
 
 @dataclass(frozen=True)

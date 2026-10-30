@@ -4,7 +4,7 @@ import json
 import sys
 from dataclasses import asdict
 
-from .chat_reader import read_selected_room_chat
+from paltalk_automation.admin_actions.backend.chat_reader import read_selected_room_chat
 
 
 def main():

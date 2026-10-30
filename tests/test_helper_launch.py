@@ -2,20 +2,20 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import main
-from paltalk_room_opener import worker
+from paltalk_automation import helper_process as worker
 
 
 class HelperLaunchTests(unittest.TestCase):
     def test_commands_for_source_and_frozen_app(self):
         with patch.object(worker.sys, 'executable', 'app.exe'), patch.object(worker.sys, 'frozen', False, create=True):
             self.assertEqual(worker.helper_command('room_helper_process', 'single'),
-                             ['app.exe', '-m', 'paltalk_room_opener.room_helper_process', 'single'])
+                             ['app.exe', '-m', 'paltalk_automation.room_opener.backend.room_helper_process', 'single'])
         with patch.object(worker.sys, 'executable', 'app.exe'), patch.object(worker.sys, 'frozen', True, create=True):
             self.assertEqual(worker.helper_command('room_helper_process', 'single'),
                              ['app.exe', '--helper', 'room_helper_process', 'single'])
 
     def test_helper_dispatch_bypasses_mutex_and_forwards_arguments(self):
-        from paltalk_room_opener import room_helper_process
+        from paltalk_automation.room_opener.backend import room_helper_process
         with patch.object(main.sys, 'argv', ['app.exe', '--helper', 'room_helper_process', 'single']), \
              patch.object(main, 'SingleInstance') as instance, \
              patch.object(room_helper_process, 'main') as helper:

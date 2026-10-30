@@ -3,14 +3,17 @@
 import sys
 from PySide6.QtWidgets import QApplication
 
-from paltalk_room_opener.main_window import MainWindow
-from paltalk_room_opener.single_instance import SingleInstance
+from paltalk_automation.main_window import MainWindow
+from paltalk_automation.single_instance import SingleInstance
 
 
 def main():
     if len(sys.argv) >= 3 and sys.argv[1] == '--helper':
         # Explicit imports also let PyInstaller discover every helper module.
-        from paltalk_room_opener import camera_helper_process, chat_reader_process, mic_timer, room_helper_process
+        from paltalk_automation.camera_opener.backend import camera_helper_process
+        from paltalk_automation.admin_actions.backend import chat_reader_process
+        from paltalk_automation.mic_timer.backend import mic_timer
+        from paltalk_automation.room_opener.backend import room_helper_process
         helpers = {module.__name__.rsplit('.', 1)[-1]: module.main for module in (
             camera_helper_process, chat_reader_process, mic_timer, room_helper_process,
         )}

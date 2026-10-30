@@ -3,8 +3,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
-from .. import settings
-from ..worker import ChatReaderWorker
+from paltalk_automation import settings
+from paltalk_automation.admin_actions.backend.chat_worker import ChatReaderWorker
 
 
 class AdminActionsTab(QWidget):

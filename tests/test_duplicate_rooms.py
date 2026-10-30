@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QLineEdit
-from paltalk_room_opener.main_window import MainWindow
+from paltalk_automation.main_window import MainWindow
 
 
 class DuplicateRoomTests(unittest.TestCase):
@@ -36,7 +36,7 @@ class DuplicateRoomTests(unittest.TestCase):
 
     def test_duplicate_cannot_be_saved_while_being_edited(self):
         window = SimpleNamespace(rooms=[QLineEdit('Alpha'), QLineEdit(' alpha ')], log=MagicMock())
-        with patch('paltalk_room_opener.main_window.settings.save_settings') as save:
+        with patch('paltalk_automation.main_window.settings.save_settings') as save:
             self.assertFalse(MainWindow.save_current_settings(window, announce=False))
             save.assert_not_called()
 

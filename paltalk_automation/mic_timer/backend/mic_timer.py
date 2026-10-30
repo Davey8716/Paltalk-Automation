@@ -7,7 +7,7 @@ import ctypes
 import psutil
 from PIL import Image, ImageGrab
 
-from .camera_automation import _badge_boxes, _ocr, _row_text, _uia, _normal
+from paltalk_automation.camera_opener.backend.camera_automation import _badge_boxes, _ocr, _row_text, _uia, _normal
 
 
 class MicTimeTracker:

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QListWidget
 
-from paltalk_room_opener.main_window import CameraEntryField, MainWindow
+from paltalk_automation.main_window import CameraEntryField, MainWindow
 
 
 class CameraDuplicateEntryTests(unittest.TestCase):

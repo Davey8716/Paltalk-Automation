@@ -4,7 +4,7 @@ import json
 import sys
 import threading
 
-from .camera_automation import watch_cameras
+from paltalk_automation.camera_opener.backend.camera_automation import watch_cameras
 
 
 def send(kind, value):

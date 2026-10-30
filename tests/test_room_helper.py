@@ -9,8 +9,8 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
-from paltalk_room_opener.worker import RoomStateWorker, RoomWorker, run_room_helper
-from paltalk_room_opener import room_helper_process
+from paltalk_automation.room_opener.backend.room_workers import RoomStateWorker, RoomWorker, run_room_helper
+from paltalk_automation.room_opener.backend import room_helper_process
 
 
 class RoomHelperTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class RoomHelperTests(unittest.TestCase):
                 + ("time.sleep(30)" if sleep else "pass"))
         def launch(*args, **kwargs):
             return original_popen([sys.executable, '-c', code], **kwargs)
-        return patch('paltalk_room_opener.worker.subprocess.Popen', side_effect=launch)
+        return patch('paltalk_automation.room_opener.backend.room_workers.subprocess.Popen', side_effect=launch)
 
     def test_invocation_timeout_reports_unknown_outcome(self):
         with self.helper_process('invoking room tile'), \
@@ -55,7 +55,7 @@ class RoomHelperTests(unittest.TestCase):
         def bounded(action, names, interrupted, message):
             return run_room_helper(action, names, interrupted, message, timeout=0.5)
         with self.helper_process('invoking room tile'), \
-             patch('paltalk_room_opener.worker.run_room_helper', side_effect=bounded):
+             patch('paltalk_automation.room_opener.backend.room_workers.run_room_helper', side_effect=bounded):
             timer.start()
             worker.start()
             QTimer.singleShot(3000, loop.quit)
@@ -69,7 +69,7 @@ class RoomHelperTests(unittest.TestCase):
         worker = RoomStateWorker(['Alpha'])
         results = []
         worker.result.connect(results.append)
-        with patch('paltalk_room_opener.worker.run_room_helper', side_effect=RuntimeError('stopped')), \
+        with patch('paltalk_automation.room_opener.backend.room_workers.run_room_helper', side_effect=RuntimeError('stopped')), \
              patch.object(worker, 'isInterruptionRequested', return_value=True):
             worker.run()
         self.assertEqual(results, [])

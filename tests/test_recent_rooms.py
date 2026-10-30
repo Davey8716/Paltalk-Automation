@@ -10,10 +10,10 @@ from unittest.mock import MagicMock
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QDialog, QListWidget, QPushButton, QWidget
 
-from paltalk_room_opener import settings
-from paltalk_room_opener.main_window import MainWindow
-from paltalk_room_opener.worker import RecentRoomsWorker
-from paltalk_room_opener.automation import _recent_tiles
+from paltalk_automation import settings
+from paltalk_automation.main_window import MainWindow
+from paltalk_automation.room_opener.backend.room_workers import RecentRoomsWorker
+from paltalk_automation.room_opener.backend.automation import _recent_tiles
 
 
 class RecentRoomsTests(unittest.TestCase):
@@ -86,7 +86,7 @@ class RecentRoomsTests(unittest.TestCase):
         worker = RecentRoomsWorker(automatic=True)
         results = []
         worker.result.connect(lambda names, error: results.append((names, error)))
-        with patch('paltalk_room_opener.worker.run_room_helper', return_value=['Alpha']) as helper:
+        with patch('paltalk_automation.room_opener.backend.room_workers.run_room_helper', return_value=['Alpha']) as helper:
             worker.run()
         self.assertEqual(helper.call_args.args[0], 'recent_background')
         self.assertEqual(results, [(['Alpha'], '')])

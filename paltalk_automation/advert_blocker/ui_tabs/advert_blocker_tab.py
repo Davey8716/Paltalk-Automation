@@ -3,9 +3,9 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
-from .. import settings
-from paltalk_adblocker.overlay import AdvertOverlay
-from paltalk_adblocker.tracker import PaltalkTracker
+from paltalk_automation import settings
+from paltalk_automation.advert_blocker.backend.overlay import AdvertOverlay
+from paltalk_automation.advert_blocker.backend.tracker import PaltalkTracker
 
 
 class AdvertBlockerTab(QWidget):

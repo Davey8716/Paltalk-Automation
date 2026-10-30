@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image, ImageDraw
 
-from paltalk_room_opener import settings
-from paltalk_room_opener.camera_automation import (
+from paltalk_automation import settings
+from paltalk_automation.camera_opener.backend.camera_automation import (
     CameraScanner, _badge_boxes, _button_section, _camera_error_message, _camera_state, _match_rows, _normal,
     _adjust_portrait_if_needed, _ocr, _portrait_clip_offset, _row_text, _row_words, _section_words, _sections, _ScanStopped, watch_cameras,
 )
@@ -27,7 +27,7 @@ class CameraTests(unittest.TestCase):
         scanner = SimpleNamespace(portrait_adjustment_enabled=lambda: enabled[0])
         window = SimpleNamespace(Current=SimpleNamespace(NativeWindowHandle=1))
         rect = SimpleNamespace(X=10, Y=0, Width=100, Height=100)
-        with patch('paltalk_room_opener.camera_automation._reposition_clipped_portrait_window', return_value=True) as move:
+        with patch('paltalk_automation.camera_opener.backend.camera_automation._reposition_clipped_portrait_window', return_value=True) as move:
             _adjust_portrait_if_needed(scanner, window, rect, lambda _: None)
             move.assert_not_called()
             enabled[0] = True
@@ -123,11 +123,11 @@ class CameraTests(unittest.TestCase):
         lines = [{'text': 'On Cam', 'top': 0, 'bottom': 15, 'words': []},
                  {'text': 'Alice', 'top': 30, 'bottom': 40, 'words': [
                      {'text': 'Alice', 'left': 5, 'right': 40, 'top': 30, 'bottom': 40}]}]
-        with patch('paltalk_room_opener.camera_automation.psutil.process_iter',
+        with patch('paltalk_automation.camera_opener.backend.camera_automation.psutil.process_iter',
                    return_value=[SimpleNamespace(info={'pid': 1, 'name': 'Paltalk.exe'})]), \
-             patch('paltalk_room_opener.camera_automation.import_module', return_value=SimpleNamespace(Int32=int)), \
-             patch('paltalk_room_opener.camera_automation.ImageGrab.grab', side_effect=lambda **kwargs: captures[0].copy()), \
-             patch('paltalk_room_opener.camera_automation._ocr', return_value=lines) as ocr:
+             patch('paltalk_automation.camera_opener.backend.camera_automation.import_module', return_value=SimpleNamespace(Int32=int)), \
+             patch('paltalk_automation.camera_opener.backend.camera_automation.ImageGrab.grab', side_effect=lambda **kwargs: captures[0].copy()), \
+             patch('paltalk_automation.camera_opener.backend.camera_automation._ocr', return_value=lines) as ocr:
             self.assertEqual(scanner.scan()[0][1], 'available')
             self.assertEqual(ocr.call_count, 3)
             fresh = Element()
@@ -316,8 +316,8 @@ class CameraTests(unittest.TestCase):
                 return True
         scanner = Scanner()
         ticks = []
-        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
-             patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=lambda _: ticks.append(1)):
+        with patch('paltalk_automation.camera_opener.backend.camera_automation.CameraScanner', return_value=scanner), \
+             patch('paltalk_automation.camera_opener.backend.camera_automation.time.sleep', side_effect=lambda _: ticks.append(1)):
             watch_cameras(['first', 'second'], lambda _: None, lambda: len(ticks) >= 3)
         self.assertEqual(scanner.calls, ['first'])
         self.assertEqual(len(ticks), 3)
@@ -325,7 +325,7 @@ class CameraTests(unittest.TestCase):
     def test_stopping_ocr_terminates_the_process(self):
         process = MagicMock()
         process.poll.return_value = None
-        with patch('paltalk_room_opener.camera_automation.subprocess.Popen', return_value=process):
+        with patch('paltalk_automation.camera_opener.backend.camera_automation.subprocess.Popen', return_value=process):
             with self.assertRaises(_ScanStopped):
                 _ocr(Image.new('RGB', (10, 10), 'white'), lambda: True)
         process.kill.assert_called_once()
@@ -352,8 +352,8 @@ class CameraTests(unittest.TestCase):
             ticks.append(1)
             if len(ticks) == 1:
                 names.append('Bob')
-        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
-             patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=sleep):
+        with patch('paltalk_automation.camera_opener.backend.camera_automation.CameraScanner', return_value=scanner), \
+             patch('paltalk_automation.camera_opener.backend.camera_automation.time.sleep', side_effect=sleep):
             watch_cameras(names, lambda _: None, lambda: len(ticks) >= 22,
                           current_names=lambda: list(names))
         self.assertEqual(scanner.opened, ['Bob'])
@@ -367,7 +367,7 @@ class CameraTests(unittest.TestCase):
                 return [(('Alice',), 'open', object(), 10, 'On Cam'),
                         (('Bob',), 'unknown', object(), 30, 'On Cam')]
         snapshots = []
-        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=Scanner()):
+        with patch('paltalk_automation.camera_opener.backend.camera_automation.CameraScanner', return_value=Scanner()):
             watch_cameras(['Alice', 'Bob', 'Carol'], lambda _: None, lambda: bool(snapshots),
                           live_status=lambda names: snapshots.append(names))
         self.assertEqual(snapshots, [['Alice']])
@@ -387,9 +387,9 @@ class CameraTests(unittest.TestCase):
                 return True
         scanner = Scanner()
         confirmed, failed, clock = [], [], [10.0]
-        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
-             patch('paltalk_room_opener.camera_automation.time.monotonic', side_effect=lambda: clock[0]), \
-             patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=lambda t: clock.__setitem__(0, clock[0] + t)):
+        with patch('paltalk_automation.camera_opener.backend.camera_automation.CameraScanner', return_value=scanner), \
+             patch('paltalk_automation.camera_opener.backend.camera_automation.time.monotonic', side_effect=lambda: clock[0]), \
+             patch('paltalk_automation.camera_opener.backend.camera_automation.time.sleep', side_effect=lambda t: clock.__setitem__(0, clock[0] + t)):
             watch_cameras(['Alice'], lambda _: None, lambda: any('confirmed' in message for message in confirmed),
                           invoked=confirmed.append, failed=failed.append)
         self.assertEqual(scanner.opens, 1)
@@ -411,9 +411,9 @@ class CameraTests(unittest.TestCase):
                 return True
         scanner = Scanner()
         confirmed, failed, clock = [], [], [10.0]
-        with patch('paltalk_room_opener.camera_automation.CameraScanner', return_value=scanner), \
-             patch('paltalk_room_opener.camera_automation.time.monotonic', side_effect=lambda: clock[0]), \
-             patch('paltalk_room_opener.camera_automation.time.sleep', side_effect=lambda t: clock.__setitem__(0, clock[0] + t)):
+        with patch('paltalk_automation.camera_opener.backend.camera_automation.CameraScanner', return_value=scanner), \
+             patch('paltalk_automation.camera_opener.backend.camera_automation.time.monotonic', side_effect=lambda: clock[0]), \
+             patch('paltalk_automation.camera_opener.backend.camera_automation.time.sleep', side_effect=lambda t: clock.__setitem__(0, clock[0] + t)):
             watch_cameras(['Alice'], lambda _: None, lambda: bool(failed),
                           invoked=confirmed.append, failed=failed.append)
         self.assertEqual(scanner.opens, 1)

@@ -9,7 +9,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QListWidget
 from PySide6.QtCore import QMimeData, QUrl
 
-from paltalk_room_opener.main_window import MainWindow, TextImportButton
+from paltalk_automation.main_window import MainWindow, TextImportButton
 
 
 class CameraImportTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class CameraImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'names.txt'
             path.write_text(contents, encoding='utf-8')
-            with patch('paltalk_room_opener.main_window.QFileDialog.getOpenFileName', return_value=(str(path), '')):
+            with patch('paltalk_automation.main_window.QFileDialog.getOpenFileName', return_value=(str(path), '')):
                 MainWindow.import_camera_names(window)
 
     def test_imports_numbered_and_plain_names_skipping_duplicates(self):
@@ -40,7 +40,7 @@ class CameraImportTests(unittest.TestCase):
 
     def test_over_limit_adds_nothing(self):
         window = self.window([f'user{i}' for i in range(200)])
-        with patch('paltalk_room_opener.main_window.QMessageBox.warning') as warning:
+        with patch('paltalk_automation.main_window.QMessageBox.warning') as warning:
             self.run_import(window, 'New user\n')
         self.assertEqual(window.camera_names.count(), 200)
         warning.assert_called_once()

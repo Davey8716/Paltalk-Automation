@@ -1,7 +1,7 @@
 import unittest
 
-from paltalk_room_opener.chat_matches import ChatMatchTracker
-from paltalk_room_opener.chat_reader import ChatMessage, ChatSnapshot
+from paltalk_automation.admin_actions.backend.chat_matches import ChatMatchTracker
+from paltalk_automation.admin_actions.backend.chat_reader import ChatMessage, ChatSnapshot
 
 
 def snapshot(room, messages, extra_ids=()):

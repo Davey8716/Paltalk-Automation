@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QListWidget
 
-from paltalk_room_opener.camera_name_list import LIVE_ROLE
-from paltalk_room_opener.main_window import MainWindow
+from paltalk_automation.camera_opener.ui_tabs.camera_name_list import LIVE_ROLE
+from paltalk_automation.main_window import MainWindow
 
 
 class CameraLiveStatusTests(unittest.TestCase):

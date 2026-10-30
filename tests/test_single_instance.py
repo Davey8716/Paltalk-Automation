@@ -1,7 +1,7 @@
 import unittest
 import uuid
 
-from paltalk_room_opener.single_instance import SingleInstance
+from paltalk_automation.single_instance import SingleInstance
 
 
 class SingleInstanceTests(unittest.TestCase):

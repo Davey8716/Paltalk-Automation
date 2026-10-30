@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication
-from paltalk_room_opener.worker import RoomWorker
-from paltalk_room_opener import room_helper_process
+from paltalk_automation.room_opener.backend.room_workers import RoomWorker
+from paltalk_automation.room_opener.backend import room_helper_process
 
 
 class AutomaticRoomTests(unittest.TestCase):
@@ -42,7 +42,7 @@ class AutomaticRoomTests(unittest.TestCase):
         worker = RoomWorker(['Alpha'], 8, automatic=True)
         results = []
         worker.completed.connect(results.append)
-        with patch('paltalk_room_opener.worker.run_room_helper', return_value=1) as helper:
+        with patch('paltalk_automation.room_opener.backend.room_workers.run_room_helper', return_value=1) as helper:
             worker.run()
         self.assertEqual(results, [1])
         self.assertEqual(helper.call_args.args[0:2], ('automatic', ['Alpha']))
@@ -52,15 +52,15 @@ class AutomaticRoomTests(unittest.TestCase):
         worker = RoomWorker(['Alpha'], 5, automatic=True)
         results = []
         worker.completed.connect(results.append)
-        with patch('paltalk_room_opener.worker.run_room_helper', side_effect=RuntimeError('timed out')):
+        with patch('paltalk_automation.room_opener.backend.room_workers.run_room_helper', side_effect=RuntimeError('timed out')):
             worker.run()
         self.assertEqual(results, [RoomWorker.STATE_UNAVAILABLE])
 
     def test_manual_open_restores_and_opens(self):
         worker = RoomWorker(['Alpha'], 5)
-        with patch('paltalk_room_opener.worker.restore_paltalk') as restore, \
-             patch('paltalk_room_opener.worker.navigate_my_rooms') as navigate, \
-             patch('paltalk_room_opener.worker.open_rooms', return_value=1) as opener:
+        with patch('paltalk_automation.room_opener.backend.room_workers.restore_paltalk') as restore, \
+             patch('paltalk_automation.room_opener.backend.room_workers.navigate_my_rooms') as navigate, \
+             patch('paltalk_automation.room_opener.backend.room_workers.open_rooms', return_value=1) as opener:
             worker.run()
         restore.assert_called_once()
         navigate.assert_called_once()
@@ -71,9 +71,9 @@ class AutomaticRoomTests(unittest.TestCase):
         messages, results = [], []
         worker.message.connect(messages.append)
         worker.completed.connect(results.append)
-        with patch('paltalk_room_opener.worker.restore_paltalk'), \
-             patch('paltalk_room_opener.worker.navigate_my_rooms', side_effect=RuntimeError('My Rooms unavailable')), \
-             patch('paltalk_room_opener.worker.open_rooms') as opener:
+        with patch('paltalk_automation.room_opener.backend.room_workers.restore_paltalk'), \
+             patch('paltalk_automation.room_opener.backend.room_workers.navigate_my_rooms', side_effect=RuntimeError('My Rooms unavailable')), \
+             patch('paltalk_automation.room_opener.backend.room_workers.open_rooms') as opener:
             worker.run()
         opener.assert_not_called()
         self.assertEqual(results, [-1])

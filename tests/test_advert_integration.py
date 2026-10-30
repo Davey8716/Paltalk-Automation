@@ -8,8 +8,8 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from paltalk_room_opener import settings
-from paltalk_room_opener.ui_tabs.advert_blocker_tab import AdvertBlockerTab
+from paltalk_automation import settings
+from paltalk_automation.advert_blocker.ui_tabs.advert_blocker_tab import AdvertBlockerTab
 
 
 class AdvertIntegrationTests(unittest.TestCase):

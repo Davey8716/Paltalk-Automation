@@ -7,7 +7,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from paltalk_room_opener.main_window import RoomDragHandle, RoomNameField
+from paltalk_automation.main_window import RoomDragHandle, RoomNameField
 
 
 class RoomDragHandleTests(unittest.TestCase):

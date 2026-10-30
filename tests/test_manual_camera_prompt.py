@@ -8,11 +8,11 @@ from unittest.mock import Mock, patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QDialog, QWidget
 
-from paltalk_room_opener import settings
-from paltalk_room_opener.camera_automation import ManualCameraTracker
-from paltalk_room_opener.main_window import MainWindow
-from paltalk_room_opener.ui_tabs.manual_camera_prompt import ManualCameraPromptController
-from paltalk_room_opener.worker import CameraWorker
+from paltalk_automation import settings
+from paltalk_automation.camera_opener.backend.camera_automation import ManualCameraTracker
+from paltalk_automation.main_window import MainWindow
+from paltalk_automation.camera_opener.ui_tabs.manual_camera_prompt import ManualCameraPromptController
+from paltalk_automation.camera_opener.backend.camera_worker import CameraWorker
 
 
 def row(name, state):
@@ -129,7 +129,7 @@ class PromptTests(unittest.TestCase):
     def test_capacity_and_duplicate_are_checked_before_adding(self):
         w = SimpleNamespace(camera_username_list=lambda: ['Alice'],
                             camera_names=SimpleNamespace(count=lambda: 200))
-        with patch('paltalk_room_opener.main_window.QMessageBox.warning') as warning:
+        with patch('paltalk_automation.main_window.QMessageBox.warning') as warning:
             MainWindow.add_camera_username(w, 'alice')
             warning.assert_not_called()
             MainWindow.add_camera_username(w, 'Bob')
@@ -156,7 +156,7 @@ class PromptTests(unittest.TestCase):
         w.update_camera_live_status = Mock()
         w.camera_prompts = SimpleNamespace(queue=Mock())
         w.cameras_finished = Mock()
-        with patch('paltalk_room_opener.main_window.CameraWorker', return_value=worker) as factory:
+        with patch('paltalk_automation.main_window.CameraWorker', return_value=worker) as factory:
             MainWindow.start_cameras(w)
         factory.assert_called_once_with([], True, True)
         worker.start.assert_called_once()

@@ -6,9 +6,9 @@ from PIL import Image, ImageDraw
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from paltalk_room_opener.mic_timer import MicTimeTracker, talking_now
-from paltalk_room_opener.worker import MicTimerWorker
-from paltalk_room_opener.ui_tabs.mic_timer_tab import MicTimerTab
+from paltalk_automation.mic_timer.backend.mic_timer import MicTimeTracker, talking_now
+from paltalk_automation.mic_timer.backend.mic_timer_worker import MicTimerWorker
+from paltalk_automation.mic_timer.ui_tabs.mic_timer_tab import MicTimerTab
 from PySide6.QtWidgets import QApplication, QPlainTextEdit
 
 

@@ -12,17 +12,19 @@ from PySide6.QtWidgets import (
 )
 
 from . import settings
-from .camera_name_list import CameraNameDelegate, CameraNameList, LIVE_ROLE
+from paltalk_automation.camera_opener.ui_tabs.camera_name_list import CameraNameDelegate, CameraNameList, LIVE_ROLE
 from .foreground import ForegroundTracker
-from .ui_tabs.manual_camera_prompt import ManualCameraPromptController
-from .ui_tabs.advert_blocker_tab import AdvertBlockerTab
-from .ui_tabs.admin_actions_tab import AdminActionsTab
-from .ui_tabs.mic_timer_tab import MicTimerTab
-from .ui_tabs.room_opener_tab import RoomOpenerTab, RoomNameField, RoomDragHandle
+from paltalk_automation.camera_opener.ui_tabs.manual_camera_prompt import ManualCameraPromptController
+from paltalk_automation.advert_blocker.ui_tabs.advert_blocker_tab import AdvertBlockerTab
+from paltalk_automation.admin_actions.ui_tabs.admin_actions_tab import AdminActionsTab
+from paltalk_automation.mic_timer.ui_tabs.mic_timer_tab import MicTimerTab
+from paltalk_automation.room_opener.ui_tabs.room_opener_tab import RoomOpenerTab, RoomNameField, RoomDragHandle
 from .styles import APP_STYLE
-from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
-from paltalk_adblocker.overlay import AdvertOverlay
-from paltalk_adblocker.tracker import PaltalkTracker
+from .camera_opener.backend.camera_worker import CameraWorker
+from .paltalk_process_worker import PaltalkProcessWorker
+from .room_opener.backend.room_workers import CloseAllRoomsWorker, CloseRoomWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
+from paltalk_automation.advert_blocker.backend.overlay import AdvertOverlay
+from paltalk_automation.advert_blocker.backend.tracker import PaltalkTracker
 
 
 class TextImportButton(QPushButton):

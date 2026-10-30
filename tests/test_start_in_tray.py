@@ -8,9 +8,9 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 with patch('importlib.util.find_spec', return_value=object()):
     import main
-from paltalk_room_opener import settings
-from paltalk_room_opener.main_window import MainWindow, QSystemTrayIcon
-from paltalk_room_opener.foreground import ForegroundTracker
+from paltalk_automation import settings
+from paltalk_automation.main_window import MainWindow, QSystemTrayIcon
+from paltalk_automation.foreground import ForegroundTracker
 
 
 class StartInTrayTests(unittest.TestCase):

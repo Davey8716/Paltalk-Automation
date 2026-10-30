@@ -474,41 +474,149 @@ class ManualCameraTracker:
         self.previous = []
         self.context = None
 
-    def scan(self, rows, room, enabled, generation, names):
-        if not enabled:
-            self.reset()
-            return []
+    @staticmethod
+    def _prepare_rows(rows):
         current = []
         for row in rows:
             readings = list(dict.fromkeys(value.strip() for value in _readings(row) if value and value.strip()))
             if readings and row[1] in ('available', 'open'):
                 section = row[4] if len(row) > 4 else None
                 current.append((readings, {_normal(value) for value in readings}, row[1], section))
+        return current
+
+    @staticmethod
+    def _is_listed(keys, listed):
+        return any(key.replace('-', '_') in listed for key in keys)
+
+    def _previous_available_match(self, keys, section, current):
+        matches = [old for old in self.previous if old[3] == section and keys & old[1]]
+        if len(matches) != 1 or matches[0][2] != 'available':
+            return None
+        old = matches[0]
+        if sum(other[3] == section and bool(other[1] & old[1]) for other in current) != 1:
+            return None
+        return old
+
+    def _opened_names(self, current, listed):
+        opened = []
+        prompted_keys = set()
+        for readings, keys, state, section in current:
+            if state != 'open' or self._is_listed(keys, listed):
+                continue
+            old = self._previous_available_match(keys, section, current)
+            if old is None or self._is_listed(old[1], listed):
+                continue
+            shared = keys & old[1]
+            all_keys = keys | old[1]
+            if all_keys & prompted_keys:
+                continue
+            opened.append(next(value for value in readings if _normal(value) in shared))
+            prompted_keys.update(all_keys)
+        return opened
+
+    def scan(self, rows, room, enabled, generation, names):
+        if not enabled:
+            self.reset()
+            return []
+        current = self._prepare_rows(rows)
         context = (room, generation)
         listed = {_normal(name).replace('-', '_') for name in names}
-        opened = []
-        if self.context == context:
-            prompted_keys = set()
-            for readings, keys, state, section in current:
-                if state != 'open' or any(key.replace('-', '_') in listed for key in keys):
-                    continue
-                matches = [old for old in self.previous if old[3] == section and keys & old[1]]
-                if len(matches) != 1 or matches[0][2] != 'available':
-                    continue
-                old = matches[0]
-                if sum(other[3] == section and bool(other[1] & old[1]) for other in current) != 1:
-                    continue
-                if any(key.replace('-', '_') in listed for key in old[1]):
-                    continue
-                shared = keys & old[1]
-                all_keys = keys | old[1]
-                if all_keys & prompted_keys:
-                    continue
-                opened.append(next(value for value in readings if _normal(value) in shared))
-                prompted_keys.update(all_keys)
+        opened = self._opened_names(current, listed) if self.context == context else []
         self.previous = current
         self.context = context
         return opened
+
+
+def _watcher_diagnostics(scanner, rows, log):
+    read = '\n\n'.join(scanner.ocr_lines) or '(none)'
+    detected = '\n\n'.join(f'{row[4]}: {_readings(row)!r}' for row in rows) or '(none)'
+    diagnostics = [f'Visible section text read by OCR:\n\n{read}',
+                   f'OCR lines matched to camera buttons:\n\n{detected}']
+    if scanner.ocr_comparisons:
+        diagnostics.append('Unmatched OCR rows:\n\n' + '\n\n'.join(scanner.ocr_comparisons))
+    log('\n\n' + '\n\n'.join(diagnostics) + '\n')
+
+
+def _watcher_name_status(rows, names, name):
+    matches, conflict = _match_rows(rows, names, name)
+    if sum(_normal(other) == _normal(name) for other in names) != 1:
+        return 'ambiguous configured username', False
+    if len(matches) != 1 or conflict:
+        if conflict:
+            status = 'row matches multiple saved usernames'
+        elif len(matches) > 1:
+            status = 'username matches multiple rows'
+        else:
+            status = 'not visible or ambiguous'
+        return status, True
+    if matches[0][1] == 'unknown':
+        return 'camera icon not recognized', False
+    return matches[0][1], False
+
+
+def _resolve_pending_camera(key, status, room_identity, pending, attempts, invoked, failed):
+    if key not in pending:
+        return True
+    attempted_name, room, deadline = pending[key]
+    if status == 'open' and room_identity == room:
+        invoked(f'{attempted_name}: camera opening confirmed by the green open-view icon.')
+        del pending[key]
+    elif time.monotonic() >= deadline:
+        failed(f'{attempted_name}: camera button was invoked, but opening could not be confirmed.')
+        del pending[key]
+        attempts[key] = time.monotonic()
+    else:
+        return False
+    return True
+
+
+def _wait_for_camera(delay, stopped, interval):
+    for _ in range(round(delay / interval)):
+        if stopped():
+            break
+        time.sleep(interval)
+
+
+def _process_watcher_names(names, rows, scanner, stopped, current_names, reported, pending, attempts,
+                           diagnostic_reported, log, invoked, failed):
+    live_names = []
+    for name in names:
+        if stopped():
+            break
+        if current_names is not None:
+            latest_names = list(dict.fromkeys(value.strip() for value in current_names() if value.strip()))
+            if name not in latest_names:
+                continue
+        else:
+            latest_names = names
+        status, needs_diagnostics = _watcher_name_status(rows, latest_names, name)
+        if needs_diagnostics and not diagnostic_reported:
+            _watcher_diagnostics(scanner, rows, log)
+            diagnostic_reported = True
+        if status in ('available', 'open'):
+            live_names.append(name)
+        if reported.get(name) != status:
+            if status not in ('available', 'open'):
+                failed(f'{name}: {status}.')
+            reported[name] = status
+        key = _normal(name)
+        if not _resolve_pending_camera(key, status, scanner.room_identity, pending, attempts, invoked, failed):
+            continue
+        if status != 'available':
+            continue
+        if time.monotonic() - attempts.get(key, 0) < 2:
+            continue
+        attempts[key] = time.monotonic()
+        def name_removed():
+            return stopped() or (current_names is not None and name not in current_names())
+        if scanner.open_if_available(name, name_removed, current_names or latest_names):
+            pending[key] = (name, scanner.room_identity, time.monotonic() + 5)
+            invoked(f'Invoked camera button for {name}; waiting for confirmation.')
+            # Let Paltalk finish opening the view before invoking another.
+            _wait_for_camera(1, stopped, .1)
+        else:
+            failed(f'Skipped {name}: the row changed or could not be verified.')
+    return live_names, diagnostic_reported
 
 
 def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None, current_names=None, live_status=None,
@@ -562,74 +670,9 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
             if last_error:
                 log('Camera list is available again.')
                 last_error = None
-            live_names = []
-            for name in names:
-                if stopped():
-                    break
-                if current_names is not None:
-                    latest_names = list(dict.fromkeys(value.strip() for value in current_names() if value.strip()))
-                    if name not in latest_names:
-                        continue
-                else:
-                    latest_names = names
-                matches, conflict = _match_rows(rows, latest_names, name)
-                if sum(_normal(other) == _normal(name) for other in latest_names) != 1:
-                    status = 'ambiguous configured username'
-                elif len(matches) != 1 or conflict:
-                    if conflict:
-                        status = 'row matches multiple saved usernames'
-                    elif len(matches) > 1:
-                        status = 'username matches multiple rows'
-                    else:
-                        status = 'not visible or ambiguous'
-                    if not diagnostic_reported:
-                        read = '\n\n'.join(scanner.ocr_lines) or '(none)'
-                        detected = '\n\n'.join(f'{row[4]}: {_readings(row)!r}' for row in rows) or '(none)'
-                        diagnostics = [f'Visible section text read by OCR:\n\n{read}',
-                                       f'OCR lines matched to camera buttons:\n\n{detected}']
-                        if scanner.ocr_comparisons:
-                            diagnostics.append('Unmatched OCR rows:\n\n' + '\n\n'.join(scanner.ocr_comparisons))
-                        log('\n\n' + '\n\n'.join(diagnostics) + '\n')
-                        diagnostic_reported = True
-                elif matches[0][1] == 'unknown':
-                    status = 'camera icon not recognized'
-                else:
-                    status = matches[0][1]
-                if status in ('available', 'open'):
-                    live_names.append(name)
-                if reported.get(name) != status:
-                    if status not in ('available', 'open'):
-                        failed(f'{name}: {status}.')
-                    reported[name] = status
-                key = _normal(name)
-                if key in pending:
-                    attempted_name, room, deadline = pending[key]
-                    if status == 'open' and scanner.room_identity == room:
-                        invoked(f'{attempted_name}: camera opening confirmed by the green open-view icon.')
-                        del pending[key]
-                    elif time.monotonic() >= deadline:
-                        failed(f'{attempted_name}: camera button was invoked, but opening could not be confirmed.')
-                        del pending[key]
-                        attempts[key] = time.monotonic()
-                    else:
-                        continue
-                if status != 'available':
-                    continue
-                if time.monotonic() - attempts.get(key, 0) < 2:
-                    continue
-                attempts[key] = time.monotonic()
-                def name_removed():
-                    return stopped() or (current_names is not None and name not in current_names())
-                if scanner.open_if_available(name, name_removed, current_names or latest_names):
-                    pending[key] = (name, scanner.room_identity, time.monotonic() + 5)
-                    invoked(f'Invoked camera button for {name}; waiting for confirmation.')
-                    # Let Paltalk finish opening the view before invoking another.
-                    for _ in range(10):
-                        if stopped():
-                            break
-                        time.sleep(.1)
-                else:
-                    failed(f'Skipped {name}: the row changed or could not be verified.')
+            live_names, diagnostic_reported = _process_watcher_names(
+                names, rows, scanner, stopped, current_names, reported, pending, attempts,
+                diagnostic_reported, log, invoked, failed)
             if not stopped():
                 live_status(live_names)
         except _ScanStopped:
@@ -646,7 +689,4 @@ def watch_cameras(names, log, stopped, invoked=None, failed=None, progress=None,
                 last_error = message
             retry_delay = 1
         progress('waiting for the next scan')
-        for _ in range(round(retry_delay / .05)):
-            if stopped():
-                break
-            time.sleep(.05)
+        _wait_for_camera(retry_delay, stopped, .05)

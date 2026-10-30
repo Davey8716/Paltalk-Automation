@@ -8,7 +8,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from paltalk_room_opener.mic_timer import MicTimeTracker, talking_now
 from paltalk_room_opener.worker import MicTimerWorker
-from paltalk_room_opener.main_window import MainWindow
+from paltalk_room_opener.mic_timer_tab import MicTimerTab
 from PySide6.QtWidgets import QApplication, QPlainTextEdit
 
 
@@ -102,7 +102,7 @@ class MicTimerRoutingTests(unittest.TestCase):
                                       mic_timer_logs=[QPlainTextEdit() for _ in range(3)],
                                       mic_timer_status=MagicMock())
         self.worker = MicTimerWorker()
-        self.worker.room_message.connect(lambda room, message: MainWindow.log_mic_timer_room(self.window, room, message))
+        self.worker.room_message.connect(lambda room, message: MicTimerTab.log_mic_timer_room(self.window, room, message))
         self.statuses = []
         self.worker.message.connect(self.statuses.append)
 
@@ -135,7 +135,7 @@ class MicTimerRoutingTests(unittest.TestCase):
 
     def test_fourth_room_shows_notice(self):
         for room in range(4):
-            MainWindow.log_mic_timer_room(self.window, (room,), 'speaker')
+            MicTimerTab.log_mic_timer_room(self.window, (room,), 'speaker')
         self.window.mic_timer_status.setText.assert_called_once()
 
 

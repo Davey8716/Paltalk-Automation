@@ -14,6 +14,10 @@ from PySide6.QtWidgets import (
 from . import settings
 from .camera_name_list import CameraNameDelegate, CameraNameList, LIVE_ROLE
 from .foreground import ForegroundTracker
+from .manual_camera_prompt import ManualCameraPromptController
+from .advert_blocker_tab import AdvertBlockerTab
+from .admin_actions_tab import AdminActionsTab
+from .mic_timer_tab import MicTimerTab
 from .styles import APP_STYLE
 from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
 from paltalk_adblocker.overlay import AdvertOverlay
@@ -126,7 +130,7 @@ class RoomNameField(QLineEdit):
 
 class RoomDragHandle(QLabel):
     def __init__(self, index, reorder):
-        super().__init__('⋮⋮')
+        super().__init__('â‹®â‹®')
         self.room_index = index
         self.reorder = reorder
         self.setObjectName('roomDragHandle')
@@ -207,10 +211,7 @@ class MainWindow(QMainWindow):
         self.room_states = None
         self.other_open_names = []
         self.camera_worker = None
-        self.camera_prompt_dialog = None
-        self.camera_prompt_queue = []
-        self.mic_timer_worker = None
-        self.chat_reader_worker = None
+        self.camera_prompts = ManualCameraPromptController(self)
         self._closing_pending = False
         self._quitting = False
         self.tray_icon = None
@@ -250,7 +251,7 @@ class MainWindow(QMainWindow):
         self.room_tray_status_label = QLabel('Start in tray: Off')
         layout.addWidget(self.room_tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
         instruction_row = QHBoxLayout()
-        instruction_row.addWidget(QLabel("Enter exact room names. Drag a ⋮⋮ handle or selected text to reorder."))
+        instruction_row.addWidget(QLabel("Enter exact room names. Drag a â‹®â‹® handle or selected text to reorder."))
         recent_rooms_controls = QVBoxLayout()
         recent_rooms_controls.setSpacing(2)
         self.recent_rooms_button = QPushButton("Recently visited")
@@ -342,9 +343,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.log)
         tabs.addTab(page, "Room Opener")
         self.create_camera_tab(tabs)
-        self.create_advert_tab(tabs)
-        self.create_admin_tab(tabs)
-        self.create_timer_tab(tabs)
+        self.advert_blocker_tab = AdvertBlockerTab(self.log)
+        tabs.addTab(self.advert_blocker_tab, 'Advert Blocker')
+        self.admin_actions_tab = AdminActionsTab(is_closing=lambda: self._closing_pending)
+        tabs.addTab(self.admin_actions_tab, 'Admin Actions')
+        self.mic_timer_tab = MicTimerTab(is_closing=lambda: self._closing_pending)
+        tabs.addTab(self.mic_timer_tab, 'Mic Timer')
         self.setCentralWidget(tabs)
         # Measure after the inherited stylesheet has been applied to the button.
         self.start_button.setMinimumWidth(self.start_button.sizeHint().width())
@@ -355,15 +359,15 @@ class MainWindow(QMainWindow):
                                   'admin_actions': 3, 'timer': 4}.get(selected_tab, 0))
             self.start_in_tray.setChecked(bool(app_state.get('start_in_tray', False)))
             self.update_tray_status(self.start_in_tray.isChecked())
-            self.advert_toggle.setChecked(app_state.get('advert_overlay_enabled') is True)
+            self.advert_blocker_tab.advert_toggle.setChecked(app_state.get('advert_overlay_enabled') is True)
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f'Could not load app state: {exc}')
         tabs.currentChanged.connect(self.save_selected_tab)
         self.start_in_tray.toggled.connect(self.save_start_in_tray)
         self.start_in_tray.toggled.connect(self.update_tray_status)
-        self.advert_toggle.toggled.connect(self.set_advert_overlay_enabled)
-        self.set_advert_overlay_enabled(self.advert_toggle.isChecked(), save=False)
-        QApplication.instance().aboutToQuit.connect(self.advert_tracker.stop)
+        self.advert_blocker_tab.advert_toggle.toggled.connect(self.advert_blocker_tab.set_advert_overlay_enabled)
+        self.advert_blocker_tab.set_advert_overlay_enabled(self.advert_blocker_tab.advert_toggle.isChecked(), save=False)
+        QApplication.instance().aboutToQuit.connect(self.advert_blocker_tab.advert_tracker.stop)
 
         self.start_button.clicked.connect(self.toggle_opening)
         self.close_all_button.clicked.connect(self.close_all_rooms)
@@ -992,16 +996,16 @@ class MainWindow(QMainWindow):
             self.hide()
             event.ignore()
             return
-        self.advert_tracker.stop()
-        self.clear_camera_prompts()
+        self.advert_blocker_tab.advert_tracker.stop()
+        self.camera_prompts.clear()
         self.camera_restart_pending = False
         self.auto_open_pending = False
         running = False
-        if self.mic_timer_worker and self.mic_timer_worker.isRunning():
-            self.mic_timer_worker.requestInterruption()
+        if self.mic_timer_tab.mic_timer_worker and self.mic_timer_tab.mic_timer_worker.isRunning():
+            self.mic_timer_tab.mic_timer_worker.requestInterruption()
             running = True
-        if self.chat_reader_worker and self.chat_reader_worker.isRunning():
-            self.chat_reader_worker.requestInterruption()
+        if self.admin_actions_tab.chat_reader_worker and self.admin_actions_tab.chat_reader_worker.isRunning():
+            self.admin_actions_tab.chat_reader_worker.requestInterruption()
             running = True
         if self.camera_worker and self.camera_worker.isRunning():
             self.camera_worker.requestInterruption()
@@ -1035,8 +1039,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, QApplication.quit)
 
     def _finish_close_when_stopped(self):
-        if ((self.mic_timer_worker and self.mic_timer_worker.isRunning()) or
-                (self.chat_reader_worker and self.chat_reader_worker.isRunning()) or
+        if ((self.mic_timer_tab.mic_timer_worker and self.mic_timer_tab.mic_timer_worker.isRunning()) or
+                (self.admin_actions_tab.chat_reader_worker and self.admin_actions_tab.chat_reader_worker.isRunning()) or
                 (self.camera_worker and self.camera_worker.isRunning()) or
                 (self.worker and self.worker.isRunning()) or
                 (self.close_room_worker and self.close_room_worker.isRunning()) or
@@ -1046,218 +1050,6 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(100, self._finish_close_when_stopped)
         else:
             self.close()
-
-    def create_timer_tab(self, tabs):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(38, 10, 38, 32)
-        layout.addWidget(QLabel('Time the person shown in Talking Now. Keep the room member list visible and unobscured.'))
-        controls = QHBoxLayout()
-        self.mic_timer_start = QPushButton('Start mic timer')
-        self.mic_timer_stop = QPushButton('Stop mic timer')
-        self.mic_timer_clear = QPushButton('Clear logs')
-        self.mic_timer_stop.setEnabled(False)
-        controls.addWidget(self.mic_timer_start)
-        controls.addWidget(self.mic_timer_stop)
-        controls.addWidget(self.mic_timer_clear)
-        controls.addStretch()
-        layout.addLayout(controls)
-        self.mic_timer_status = QLabel('Start the timer to monitor the visible room.')
-        self.mic_timer_status.setObjectName('micTimerStatus')
-        self.mic_timer_status.setMinimumHeight(48)
-        self.mic_timer_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.mic_timer_status.setWordWrap(True)
-        layout.addWidget(self.mic_timer_status)
-        self.mic_timer_rooms = {}
-        self.mic_timer_logs = []
-        columns = QHBoxLayout()
-        for index in range(3):
-            column = QVBoxLayout()
-            column.addWidget(QLabel(f'Room {index + 1}'))
-            log = QPlainTextEdit()
-            log.setReadOnly(True)
-            log.document().setMaximumBlockCount(2000)
-            column.addWidget(log)
-            self.mic_timer_logs.append(log)
-            columns.addLayout(column)
-        layout.addLayout(columns)
-        tabs.addTab(page, 'Mic Timer')
-        self.mic_timer_start.clicked.connect(self.start_mic_timer)
-        self.mic_timer_stop.clicked.connect(self.stop_mic_timer)
-        self.mic_timer_clear.clicked.connect(self.clear_mic_timer_logs)
-
-    def clear_mic_timer_logs(self):
-        for log in self.mic_timer_logs:
-            log.clear()
-
-    def log_mic_timer_room(self, room, message):
-        room = tuple(room)
-        if room not in self.mic_timer_rooms:
-            if len(self.mic_timer_rooms) >= len(self.mic_timer_logs):
-                self.mic_timer_status.setText('More than three rooms detected; only the first three have logs. Restart the timer to reassign them.')
-                return
-            self.mic_timer_rooms[room] = len(self.mic_timer_rooms)
-        self.mic_timer_logs[self.mic_timer_rooms[room]].appendPlainText(message)
-
-    def start_mic_timer(self):
-        if self.mic_timer_worker:
-            return
-        self.mic_timer_worker = MicTimerWorker()
-        self.mic_timer_rooms.clear()
-        for log in self.mic_timer_logs:
-            log.appendPlainText('— New timer session —')
-        self.mic_timer_worker.message.connect(self.mic_timer_status.setText)
-        self.mic_timer_worker.room_message.connect(self.log_mic_timer_room)
-        self.mic_timer_worker.finished.connect(self.mic_timer_finished)
-        self.mic_timer_start.setEnabled(False)
-        self.mic_timer_stop.setEnabled(True)
-        self.mic_timer_status.setText('Mic timer started; waiting for a confirmed speaker.')
-        self.mic_timer_worker.start()
-
-    def stop_mic_timer(self):
-        if self.mic_timer_worker:
-            self.mic_timer_worker.requestInterruption()
-            self.mic_timer_stop.setEnabled(False)
-
-    def mic_timer_finished(self):
-        self.mic_timer_worker = None
-        self.mic_timer_start.setEnabled(not self._closing_pending)
-        self.mic_timer_stop.setEnabled(False)
-        self.mic_timer_status.setText('Mic timer stopped.')
-
-    def create_admin_tab(self, tabs):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(38, 10, 38, 32)
-        self.tray_status_label = QLabel('Start in tray: Off')
-        layout.addWidget(self.tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
-        layout.addWidget(QLabel('Banned phrases'))
-        layout.addWidget(QLabel('Add literal phrases to monitor. Double-click a phrase to edit it.'))
-        self.admin_phrases = QListWidget()
-        self.admin_phrases.setObjectName('adminPhrases')
-        layout.addWidget(self.admin_phrases)
-        entry = QHBoxLayout()
-        self.admin_phrase_entry = QLineEdit()
-        self.admin_phrase_entry.setPlaceholderText('Enter or paste a banned phrase, including emoji')
-        add = QPushButton('Add')
-        edit = QPushButton('Edit selected')
-        remove = QPushButton('Remove selected')
-        for widget in (self.admin_phrase_entry, add, edit, remove):
-            entry.addWidget(widget)
-        layout.addLayout(entry)
-        save = QPushButton('Save phrases')
-        save.setFixedSize(150,35)
-        layout.addWidget(save)
-        layout.addWidget(QLabel('Selected room chat'))
-        self.admin_chat_log = QPlainTextEdit()
-        self.admin_chat_log.setReadOnly(True)
-        self.admin_chat_log.document().setMaximumBlockCount(2000)
-        layout.addWidget(self.admin_chat_log)
-        chat_controls = QHBoxLayout()
-        self.admin_chat_start = QPushButton('Start reading chat')
-        self.admin_chat_stop = QPushButton('Stop reading chat')
-        self.admin_chat_stop.setEnabled(False)
-        clear = QPushButton('Clear log')
-        for button in (self.admin_chat_start, self.admin_chat_stop, clear):
-            chat_controls.addWidget(button)
-        chat_controls.addStretch()
-        layout.addLayout(chat_controls)
-        review_label = QLabel('Review mode: new phrase matches are logged for inspection; no users are bounced.')
-        review_label.setWordWrap(True)
-        layout.addWidget(review_label)
-        self.admin_match_log = QPlainTextEdit()
-        self.admin_match_log.setReadOnly(True)
-        self.admin_match_log.document().setMaximumBlockCount(2000)
-        layout.addWidget(self.admin_match_log)
-        clear_matches = QPushButton('Clear matches')
-        clear_matches.setFixedSize(150,35)
-        for button in (self.admin_chat_start, self.admin_chat_stop, clear):
-            button.setFixedSize(180, 35)
-        layout.addWidget(clear_matches)
-        tabs.addTab(page, 'Admin Actions')
-        try:
-            for phrase in settings.load_admin_phrases():
-                self.admin_phrases.addItem(phrase)
-                item = self.admin_phrases.item(self.admin_phrases.count() - 1)
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-        except (OSError, ValueError, TypeError) as exc:
-            QMessageBox.warning(self, 'Admin actions', f'Could not load banned phrases: {exc}')
-        add.clicked.connect(self.add_admin_phrase)
-        self.admin_phrase_entry.returnPressed.connect(self.add_admin_phrase)
-        edit.clicked.connect(self.edit_admin_phrase)
-        remove.clicked.connect(self.remove_admin_phrase)
-        save.clicked.connect(self.save_admin_phrases)
-        self.admin_chat_start.clicked.connect(self.start_chat_reader)
-        self.admin_chat_stop.clicked.connect(self.stop_chat_reader)
-        clear.clicked.connect(self.admin_chat_log.clear)
-        clear_matches.clicked.connect(self.admin_match_log.clear)
-
-    def start_chat_reader(self):
-        if self.chat_reader_worker is not None:
-            return
-        try:
-            phrases = settings.load_admin_phrases()
-        except (OSError, ValueError, TypeError) as exc:
-            QMessageBox.warning(self, 'Admin actions', f'Could not load banned phrases: {exc}')
-            return
-        self.chat_reader_worker = ChatReaderWorker(phrases)
-        self.chat_reader_worker.message.connect(self.admin_chat_log.appendPlainText)
-        self.chat_reader_worker.match.connect(self.admin_match_log.appendPlainText)
-        self.admin_match_log.appendPlainText(f'Review mode started with {len(phrases)} saved phrases. Existing messages are ignored; no users will be bounced.')
-        self.chat_reader_worker.finished.connect(self.chat_reader_finished)
-        self.admin_chat_start.setEnabled(False)
-        self.admin_chat_stop.setEnabled(True)
-        self.chat_reader_worker.start()
-
-    def stop_chat_reader(self):
-        if self.chat_reader_worker:
-            self.chat_reader_worker.requestInterruption()
-            self.admin_chat_stop.setEnabled(False)
-
-    def chat_reader_finished(self):
-        self.chat_reader_worker = None
-        self.admin_chat_start.setEnabled(not self._closing_pending)
-        self.admin_chat_stop.setEnabled(False)
-        self.admin_chat_log.appendPlainText('Chat reader stopped.')
-
-    def add_admin_phrase(self):
-        phrase = self.admin_phrase_entry.text().strip()
-        if not phrase:
-            return
-        if phrase.casefold() in {self.admin_phrases.item(i).text().strip().casefold()
-                                for i in range(self.admin_phrases.count())}:
-            QMessageBox.warning(self, 'Admin actions', 'That phrase is already in the list.')
-            return
-        self.admin_phrases.addItem(phrase)
-        item = self.admin_phrases.item(self.admin_phrases.count() - 1)
-        item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
-        self.admin_phrases.setCurrentItem(item)
-        self.admin_phrase_entry.clear()
-
-    def edit_admin_phrase(self):
-        item = self.admin_phrases.currentItem()
-        if item:
-            self.admin_phrases.editItem(item)
-
-    def remove_admin_phrase(self):
-        row = self.admin_phrases.currentRow()
-        if row >= 0:
-            item = self.admin_phrases.takeItem(row)
-            if not self.save_admin_phrases():
-                self.admin_phrases.insertItem(row, item)
-                self.admin_phrases.setCurrentItem(item)
-
-    def save_admin_phrases(self):
-        phrases = [self.admin_phrases.item(i).text().strip() for i in range(self.admin_phrases.count())]
-        if any(not phrase for phrase in phrases) or len({p.casefold() for p in phrases}) != len(phrases):
-            QMessageBox.warning(self, 'Admin actions', 'Phrases cannot be empty or duplicated.')
-            return False
-        try:
-            settings.save_admin_phrases(phrases)
-            return True
-        except (OSError, ValueError) as exc:
-            QMessageBox.warning(self, 'Admin actions', f'Could not save banned phrases: {exc}')
-            return False
 
     def create_camera_tab(self, tabs):
         page = QWidget()
@@ -1603,34 +1395,6 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.log.appendPlainText(f'Could not save app state: {exc}')
 
-    def create_advert_tab(self, tabs):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(38, 24, 38, 32)
-        layout.addWidget(QLabel('Cover the advert area in the Paltalk window.'))
-        self.advert_toggle = QPushButton('Advert overlay: Off')
-        self.advert_toggle.setCheckable(True)
-        self.advert_toggle.setMaximumWidth(220)
-        layout.addWidget(self.advert_toggle, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addStretch()
-        self.advert_overlay = AdvertOverlay()
-        self.advert_tracker = PaltalkTracker(self.advert_overlay)
-        tabs.addTab(page, 'Advert Blocker')
-
-    def set_advert_overlay_enabled(self, enabled, save=True):
-        self.advert_toggle.setText(f'Advert overlay: {"On" if enabled else "Off"}')
-        if enabled:
-            self.advert_tracker.set_enabled(True)
-            self.advert_tracker.start()
-        else:
-            self.advert_tracker.stop()
-            self.advert_tracker.set_enabled(False)
-        if save:
-            try:
-                settings.save_app_state(advert_overlay_enabled=enabled)
-            except (OSError, ValueError, TypeError, AttributeError) as exc:
-                self.log.appendPlainText(f'Could not save app state: {exc}')
-
     def save_start_in_tray(self, enabled):
         try:
             settings.save_app_state(start_in_tray=enabled)
@@ -1639,7 +1403,7 @@ class MainWindow(QMainWindow):
 
     def update_tray_status(self, enabled):
         text = f'Start in tray: {"On" if enabled else "Off"}'
-        self.tray_status_label.setText(text)
+        self.admin_actions_tab.tray_status_label.setText(text)
         self.room_tray_status_label.setText(text)
         self.camera_tray_status_label.setText(text)
 
@@ -1743,58 +1507,10 @@ class MainWindow(QMainWindow):
     def camera_manual_prompt_changed(self, enabled):
         self.camera_manual_prompt.setText('Prompt to add manually opened cameras: ' + ('On' if enabled else 'Off'))
         if not enabled:
-            self.clear_camera_prompts()
+            self.camera_prompts.clear()
         if self.camera_worker:
             self.camera_worker.update_manual_prompt(enabled)
         self.save_camera_settings()
-
-    def clear_camera_prompts(self):
-        self.camera_prompt_queue.clear()
-        if self.camera_prompt_dialog is not None:
-            dialog = self.camera_prompt_dialog
-            self.camera_prompt_dialog = None
-            dialog.reject()
-            dialog.deleteLater()
-
-    def queue_manual_camera_prompt(self, name):
-        if not self.camera_worker or self.camera_worker.isInterruptionRequested() or not self.camera_manual_prompt.isChecked():
-            return
-        if name.casefold() in {n.casefold() for n in self.camera_username_list()}:
-            return
-        if name.casefold() not in {n.casefold() for n in self.camera_prompt_queue}:
-            self.camera_prompt_queue.append(name)
-        self.show_next_camera_prompt()
-
-    def show_next_camera_prompt(self):
-        if self.camera_prompt_dialog is not None or not self.camera_prompt_queue:
-            return
-        if not self.camera_worker or self.camera_worker.isInterruptionRequested() or not self.camera_manual_prompt.isChecked():
-            self.camera_prompt_queue.clear()
-            return
-        name = self.camera_prompt_queue.pop(0)
-        if name.casefold() in {n.casefold() for n in self.camera_username_list()}:
-            self.show_next_camera_prompt()
-            return
-        dialog = QInputDialog(self)
-        dialog.setWindowTitle('Add camera username')
-        dialog.setLabelText('Check the detected username and correct it if needed:')
-        dialog.setTextValue(name)
-        dialog.setOkButtonText('Add')
-        dialog.setCancelButtonText('Cancel')
-        self.camera_prompt_dialog = dialog
-
-        def finished(result):
-            if self.camera_prompt_dialog is not dialog:
-                return
-            self.camera_prompt_dialog = None
-            if (result == QDialog.DialogCode.Accepted and self.camera_worker
-                    and not self.camera_worker.isInterruptionRequested() and self.camera_manual_prompt.isChecked()):
-                self.add_camera_username(dialog.textValue())
-            dialog.deleteLater()
-            self.show_next_camera_prompt()
-
-        dialog.finished.connect(finished)
-        dialog.open()
 
     def start_cameras(self, automatic=False):
         if self.camera_worker:
@@ -1811,7 +1527,7 @@ class MainWindow(QMainWindow):
         self.camera_worker.invoked.connect(self.camera_invoked_log.appendPlainText)
         self.camera_worker.failed.connect(self.camera_failed_log.appendPlainText)
         self.camera_worker.live_status.connect(self.update_camera_live_status)
-        self.camera_worker.manual_opened.connect(self.queue_manual_camera_prompt)
+        self.camera_worker.manual_opened.connect(self.camera_prompts.queue)
         self.camera_worker.finished.connect(self.cameras_finished)
         self.camera_start.setEnabled(False)
         self.camera_stop.setEnabled(True)
@@ -1819,7 +1535,7 @@ class MainWindow(QMainWindow):
         self.camera_worker.start()
 
     def stop_cameras(self):
-        self.clear_camera_prompts()
+        self.camera_prompts.clear()
         self.camera_restart_pending = False
         self.update_camera_live_status([])
         if self.camera_worker:
@@ -1828,7 +1544,7 @@ class MainWindow(QMainWindow):
             self.camera_log.appendPlainText('Stopping camera monitoring...')
 
     def cameras_finished(self):
-        self.clear_camera_prompts()
+        self.camera_prompts.clear()
         self.update_camera_live_status([])
         self.camera_worker = None
         self.camera_start.setEnabled(True)

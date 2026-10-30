@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QWidget
 from paltalk_room_opener import settings
 from paltalk_room_opener.camera_automation import ManualCameraTracker
 from paltalk_room_opener.main_window import MainWindow
+from paltalk_room_opener.manual_camera_prompt import ManualCameraPromptController
 from paltalk_room_opener.worker import CameraWorker
 
 
@@ -95,36 +96,34 @@ class PromptTests(unittest.TestCase):
         w = self.window
         w.camera_worker = SimpleNamespace(isInterruptionRequested=lambda: False)
         w.camera_manual_prompt = SimpleNamespace(isChecked=lambda: True)
-        w.camera_prompt_dialog = None
-        w.camera_prompt_queue = []
+        w.camera_prompts = ManualCameraPromptController(w)
         w.camera_username_list = lambda: []
         w.add_camera_username = Mock()
-        w.show_next_camera_prompt = lambda: MainWindow.show_next_camera_prompt(w)
 
     def tearDown(self):
-        MainWindow.clear_camera_prompts(self.window)
+        self.window.camera_prompts.clear()
         self.window.close()
 
     def test_accept_and_decline(self):
         w = self.window
-        MainWindow.queue_manual_camera_prompt(w, 'Alice')
-        w.camera_prompt_dialog.setTextValue('aizasam')
-        w.camera_prompt_dialog.done(QDialog.DialogCode.Accepted)
+        w.camera_prompts.queue('Alice')
+        w.camera_prompts.dialog.setTextValue('aizasam')
+        w.camera_prompts.dialog.done(QDialog.DialogCode.Accepted)
         w.add_camera_username.assert_called_once_with('aizasam')
-        MainWindow.queue_manual_camera_prompt(w, 'Bob')
-        w.camera_prompt_dialog.done(QDialog.DialogCode.Rejected)
+        w.camera_prompts.queue('Bob')
+        w.camera_prompts.dialog.done(QDialog.DialogCode.Rejected)
         w.add_camera_username.assert_called_once()
 
     def test_cancel_clears_pending_and_listed_names_are_skipped(self):
         w = self.window
         w.camera_username_list = lambda: ['Alice']
-        MainWindow.queue_manual_camera_prompt(w, 'alice')
-        self.assertIsNone(w.camera_prompt_dialog)
-        MainWindow.queue_manual_camera_prompt(w, 'Bob')
-        MainWindow.queue_manual_camera_prompt(w, 'Carol')
-        MainWindow.clear_camera_prompts(w)
-        self.assertIsNone(w.camera_prompt_dialog)
-        self.assertEqual(w.camera_prompt_queue, [])
+        w.camera_prompts.queue('alice')
+        self.assertIsNone(w.camera_prompts.dialog)
+        w.camera_prompts.queue('Bob')
+        w.camera_prompts.queue('Carol')
+        w.camera_prompts.clear()
+        self.assertIsNone(w.camera_prompts.dialog)
+        self.assertEqual(w.camera_prompts.queue_items, [])
         w.add_camera_username.assert_not_called()
 
     def test_capacity_and_duplicate_are_checked_before_adding(self):
@@ -155,7 +154,7 @@ class PromptTests(unittest.TestCase):
         w.camera_start = SimpleNamespace(setEnabled=Mock())
         w.camera_stop = SimpleNamespace(setEnabled=Mock())
         w.update_camera_live_status = Mock()
-        w.queue_manual_camera_prompt = Mock()
+        w.camera_prompts = SimpleNamespace(queue=Mock())
         w.cameras_finished = Mock()
         with patch('paltalk_room_opener.main_window.CameraWorker', return_value=worker) as factory:
             MainWindow.start_cameras(w)

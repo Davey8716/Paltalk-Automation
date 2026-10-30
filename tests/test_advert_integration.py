@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from paltalk_room_opener import settings
-from paltalk_room_opener.main_window import MainWindow
+from paltalk_room_opener.advert_blocker_tab import AdvertBlockerTab
 
 
 class AdvertIntegrationTests(unittest.TestCase):
@@ -19,11 +19,11 @@ class AdvertIntegrationTests(unittest.TestCase):
              patch.object(settings, 'APP_DATA_DIR', Path(directory)), \
              patch.object(settings, 'APP_STATE_PATH', Path(directory) / 'app_state.json'):
             settings.save_app_state(selected_tab='camera_opener')
-            MainWindow.set_advert_overlay_enabled(window, True)
+            AdvertBlockerTab.set_advert_overlay_enabled(window, True)
             window.advert_tracker.start.assert_called_once()
             self.assertEqual(settings.load_app_state(), {
                 'selected_tab': 'camera_opener', 'advert_overlay_enabled': True})
-            MainWindow.set_advert_overlay_enabled(window, False)
+            AdvertBlockerTab.set_advert_overlay_enabled(window, False)
             window.advert_tracker.stop.assert_called_once()
             self.assertFalse(json.loads(settings.APP_STATE_PATH.read_text())['advert_overlay_enabled'])
             window.advert_toggle.setText.assert_called_with('Advert overlay: Off')

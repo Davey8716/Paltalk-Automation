@@ -3,89 +3,29 @@
 from pathlib import Path
 import re
 
-from PySide6.QtCore import QMimeData, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices, QDrag, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QColor, QDesktopServices,  QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QDialog, QDoubleSpinBox, QFileDialog, QGridLayout, QHBoxLayout, QLabel,
-    QGraphicsDropShadowEffect, QInputDialog, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
+    QApplication, QDialog, QFileDialog,  QHBoxLayout, QLabel,
+    QGraphicsDropShadowEffect, QLineEdit, QListWidget, QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton,
     QScrollArea, QStyle, QSystemTrayIcon, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 from . import settings
+from paltalk_automation.camera_opener.ui_tabs.camera_entry_field import CameraEntryField
+from paltalk_automation.camera_opener.ui_tabs.text_import_button import TextImportButton
 from paltalk_automation.camera_opener.ui_tabs.camera_name_list import CameraNameDelegate, CameraNameList, LIVE_ROLE
 from .foreground import ForegroundTracker
 from paltalk_automation.camera_opener.ui_tabs.manual_camera_prompt import ManualCameraPromptController
 from paltalk_automation.advert_blocker.ui_tabs.advert_blocker_tab import AdvertBlockerTab
 from paltalk_automation.admin_actions.ui_tabs.admin_actions_tab import AdminActionsTab
 from paltalk_automation.mic_timer.ui_tabs.mic_timer_tab import MicTimerTab
-from paltalk_automation.room_opener.ui_tabs.room_opener_tab import RoomOpenerTab, RoomNameField, RoomDragHandle
+from paltalk_automation.room_opener.ui_tabs.room_opener_tab import RoomOpenerTab
 from .styles import APP_STYLE
 from .camera_opener.backend.camera_worker import CameraWorker
 from .paltalk_process_worker import PaltalkProcessWorker
 from .room_opener.backend.room_workers import CloseAllRoomsWorker, CloseRoomWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
-from paltalk_automation.advert_blocker.backend.overlay import AdvertOverlay
-from paltalk_automation.advert_blocker.backend.tracker import PaltalkTracker
 
-
-class TextImportButton(QPushButton):
-    fileDropped = Signal(str)
-
-    def __init__(self, text, parent=None):
-        super().__init__(text, parent)
-        self.setAcceptDrops(True)
-
-    @staticmethod
-    def _text_file(mime):
-        urls = mime.urls() if mime.hasUrls() else []
-        if len(urls) == 1 and urls[0].isLocalFile():
-            path = Path(urls[0].toLocalFile())
-            if path.suffix.lower() == '.txt' and path.is_file():
-                return str(path)
-        return None
-
-    def dragEnterEvent(self, event):
-        if self._text_file(event.mimeData()):
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-
-    def dropEvent(self, event):
-        path = self._text_file(event.mimeData())
-        if path:
-            event.acceptProposedAction()
-            self.fileDropped.emit(path)
-        else:
-            event.ignore()
-
-
-class CameraEntryField(QLineEdit):
-    """Show duplicate feedback without replacing the username being typed."""
-
-    def __init__(self):
-        super().__init__()
-        self.duplicate_message = QLabel('this name has already be been entered', self)
-        self.duplicate_message.setStyleSheet('color: #e33b3b; background: transparent; padding: 0;')
-        self.duplicate_message.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.duplicate_message.hide()
-        self.setMinimumWidth(self.duplicate_message.sizeHint().width() + 150)
-
-    def set_duplicate(self, duplicate):
-        if bool(self.property('roomDuplicate')) != duplicate:
-            self.setProperty('roomDuplicate', duplicate)
-            self.style().unpolish(self)
-            self.style().polish(self)
-        self.duplicate_message.setVisible(duplicate)
-        width = self.duplicate_message.sizeHint().width() if duplicate else 0
-        self.setTextMargins(0, 0, width + 12 if duplicate else 0, 0)
-        self._position_message()
-
-    def _position_message(self):
-        width = self.duplicate_message.sizeHint().width()
-        self.duplicate_message.setGeometry(max(0, self.width() - width - 10), 0, width, self.height())
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self._position_message()
 
 
 class MainWindow(QMainWindow):

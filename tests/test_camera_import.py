@@ -9,7 +9,8 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QListWidget
 from PySide6.QtCore import QMimeData, QUrl
 
-from paltalk_automation.main_window import MainWindow, TextImportButton
+from paltalk_automation.camera_opener.ui_tabs.text_import_button import TextImportButton
+from paltalk_automation.main_window import MainWindow
 
 
 class CameraImportTests(unittest.TestCase):

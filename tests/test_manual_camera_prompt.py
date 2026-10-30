@@ -129,7 +129,7 @@ class PromptTests(unittest.TestCase):
     def test_capacity_and_duplicate_are_checked_before_adding(self):
         w = SimpleNamespace(camera_username_list=lambda: ['Alice'],
                             camera_names=SimpleNamespace(count=lambda: 200))
-        with patch('paltalk_automation.main_window.QMessageBox.warning') as warning:
+        with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QMessageBox.warning') as warning:
             MainWindow.add_camera_username(w, 'alice')
             warning.assert_not_called()
             MainWindow.add_camera_username(w, 'Bob')
@@ -156,7 +156,7 @@ class PromptTests(unittest.TestCase):
         w.update_camera_live_status = Mock()
         w.camera_prompts = SimpleNamespace(queue=Mock())
         w.cameras_finished = Mock()
-        with patch('paltalk_automation.main_window.CameraWorker', return_value=worker) as factory:
+        with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.CameraWorker', return_value=worker) as factory:
             MainWindow.start_cameras(w)
         factory.assert_called_once_with([], True, True)
         worker.start.assert_called_once()

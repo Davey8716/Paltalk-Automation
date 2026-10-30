@@ -30,7 +30,7 @@ class CameraImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'names.txt'
             path.write_text(contents, encoding='utf-8')
-            with patch('paltalk_automation.main_window.QFileDialog.getOpenFileName', return_value=(str(path), '')):
+            with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QFileDialog.getOpenFileName', return_value=(str(path), '')):
                 MainWindow.import_camera_names(window)
 
     def test_imports_numbered_and_plain_names_skipping_duplicates(self):
@@ -41,7 +41,7 @@ class CameraImportTests(unittest.TestCase):
 
     def test_over_limit_adds_nothing(self):
         window = self.window([f'user{i}' for i in range(200)])
-        with patch('paltalk_automation.main_window.QMessageBox.warning') as warning:
+        with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QMessageBox.warning') as warning:
             self.run_import(window, 'New user\n')
         self.assertEqual(window.camera_names.count(), 200)
         warning.assert_called_once()

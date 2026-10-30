@@ -27,14 +27,14 @@ class CameraExportTests(unittest.TestCase):
         for names in (['Zoë', 'Alice'], ['Alice', 'Zoë']):
             with self.subTest(names=names), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / 'names.txt'
-                with patch('paltalk_automation.main_window.QFileDialog.getSaveFileName', return_value=(str(path), '')):
+                with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QFileDialog.getSaveFileName', return_value=(str(path), '')):
                     MainWindow.export_camera_names(self.window(names))
                 self.assertEqual(path.read_text(encoding='utf-8'),
                                  f'1. {names[0]}\n2. {names[1]}\n')
 
     def test_empty_list_shows_message_without_opening_dialog(self):
-        with patch('paltalk_automation.main_window.QMessageBox.information') as message, \
-             patch('paltalk_automation.main_window.QFileDialog.getSaveFileName') as dialog:
+        with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QMessageBox.information') as message, \
+             patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QFileDialog.getSaveFileName') as dialog:
             MainWindow.export_camera_names(self.window([]))
         message.assert_called_once()
         dialog.assert_not_called()
@@ -45,13 +45,13 @@ class CameraExportTests(unittest.TestCase):
         window.camera_names.item(1).setData(Qt.ItemDataRole.UserRole, 1)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'names.txt'
-            with patch('paltalk_automation.main_window.QFileDialog.getSaveFileName', return_value=(str(path), '')):
+            with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QFileDialog.getSaveFileName', return_value=(str(path), '')):
                 MainWindow.export_camera_names(window)
             self.assertEqual(path.read_text(encoding='utf-8'), '2. Alice\n1. Zoë\n')
 
     def test_cancel_does_not_write(self):
         window = self.window(['Alice'])
-        with patch('paltalk_automation.main_window.QFileDialog.getSaveFileName', return_value=('', '')), \
+        with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QFileDialog.getSaveFileName', return_value=('', '')), \
              patch('pathlib.Path.write_text') as write:
             MainWindow.export_camera_names(window)
         write.assert_not_called()
@@ -60,16 +60,16 @@ class CameraExportTests(unittest.TestCase):
     def test_success_clears_reminder(self):
         window = self.window(['Alice'])
         with tempfile.TemporaryDirectory() as directory, \
-             patch('paltalk_automation.main_window.QFileDialog.getSaveFileName',
+             patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QFileDialog.getSaveFileName',
                    return_value=(str(Path(directory) / 'names.txt'), '')):
             MainWindow.export_camera_names(window)
         window.clear_camera_export_reminder.assert_called_once()
 
     def test_write_error_shows_warning(self):
         window = self.window(['Alice'])
-        with patch('paltalk_automation.main_window.QFileDialog.getSaveFileName', return_value=('names.txt', '')), \
+        with patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QFileDialog.getSaveFileName', return_value=('names.txt', '')), \
              patch('pathlib.Path.write_text', side_effect=OSError('access denied')), \
-             patch('paltalk_automation.main_window.QMessageBox.warning') as warning:
+             patch('paltalk_automation.camera_opener.ui_tabs.camera_opener_ui.QMessageBox.warning') as warning:
             MainWindow.export_camera_names(window)
         self.assertIn('access denied', warning.call_args.args[2])
         window.clear_camera_export_reminder.assert_not_called()

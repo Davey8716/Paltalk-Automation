@@ -1,8 +1,8 @@
-# Paltalk Room Opener
+# Paltalk Automation
 
-A Windows desktop app that invokes up to five named Paltalk room tiles in order.
+A Windows desktop app for opening rooms and cameras, blocking adverts, reviewing chat, and timing speakers in Paltalk.
 
-`main.py` is the main entry point. Application code lives in `paltalk_automation/`, with feature folders for room opening, camera opening, advert blocking, admin actions, and the mic timer. Each feature has `ui_tabs/` and `backend/` folders; shared window, settings, workers, and styling remain at the package level.
+`main.py` is the main entry point. Application code lives in `paltalk_automation/`, with feature folders for room opening, camera opening, advert blocking, admin actions, and the mic timer. Each feature has `ui_tabs/` and `backend/` folders; shared window, startup and shutdown coordinators, settings, and styling remain at the package level. Shared tray and settings-menu UI components live in `paltalk_automation/ui_tabs/`.
 
 ## Setup
 
@@ -14,6 +14,12 @@ Install the 64-bit CPython 3.14 release, then in PowerShell from this folder run
 ```
 
 Use the same Python 3.14 interpreter to install dependencies, run the app, and build the executable. Do not add the entire project folder as data; the Python source is collected by PyInstaller. Include the app's required non-Python resources, such as `paltalk_automation/camera_opener/backend/windows_ocr.ps1`.
+
+To build an executable, first install PyInstaller separately in the same Python environment (it is not included in `requirements.txt`):
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\Python\Python314\python.exe" -m pip install pyinstaller
+```
 
 Build a windowed executable with the helper modules and Windows automation library included:
 
@@ -68,3 +74,8 @@ The watcher waits a quarter of a second between scans. Each scan also takes time
 Add banned phrases on the **Admin Actions** tab. Double-click a phrase or select it and click **Edit selected** to change it; select a phrase and click **Remove selected** to remove it and immediately save the list. Click **Save phrases** to keep additions and edits. The list is stored in `%LOCALAPPDATA%\PaltalkRoomOpener\admin_actions.json` and supports emoji. Empty and duplicate phrases are rejected.
 
 With a room displayed in Paltalk, click **Start reading chat** to show readable messages and their senders in the log, then **Stop reading chat** to stop. It includes currently loaded messages and follows the selected room. In **Review mode**, new messages containing a saved phrase, matched without regard to case, appear in the match log for inspection; no users are bounced. Existing messages are ignored for matching when reading starts or the selected room changes. Saved phrase changes apply while the reader is running. The selected room is identified by its UI ID because its name is not exposed by the inspected controls. Messages with an uncertain sender are omitted. The reader polls, so messages that appear and disappear between readings may be missed.
+
+
+## Mic Timer
+
+On the **Mic Timer** tab, click **Start mic timer** to monitor the person shown in Talking Now. Keep the room member list visible and unobscured. Activity is displayed in up to three room logs; use **Stop mic timer** to stop monitoring and **Clear logs** to clear the displayed entries.

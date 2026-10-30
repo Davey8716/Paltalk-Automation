@@ -14,10 +14,11 @@ from PySide6.QtWidgets import (
 from . import settings
 from .camera_name_list import CameraNameDelegate, CameraNameList, LIVE_ROLE
 from .foreground import ForegroundTracker
-from .ui.manual_camera_prompt import ManualCameraPromptController
-from .ui.advert_blocker_tab import AdvertBlockerTab
-from .ui.admin_actions_tab import AdminActionsTab
-from .ui.mic_timer_tab import MicTimerTab
+from .ui_tabs.manual_camera_prompt import ManualCameraPromptController
+from .ui_tabs.advert_blocker_tab import AdvertBlockerTab
+from .ui_tabs.admin_actions_tab import AdminActionsTab
+from .ui_tabs.mic_timer_tab import MicTimerTab
+from .ui_tabs.room_opener_tab import RoomOpenerTab, RoomNameField, RoomDragHandle
 from .styles import APP_STYLE
 from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
 from paltalk_adblocker.overlay import AdvertOverlay
@@ -85,107 +86,6 @@ class CameraEntryField(QLineEdit):
         self._position_message()
 
 
-class RoomNameField(QLineEdit):
-    """Accept a room dragged from another room field or its handle."""
-
-    def __init__(self, index, reorder):
-        super().__init__()
-        self.room_index = index
-        self.reorder = reorder
-        self.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.textChanged.connect(self._show_start_when_unfocused)
-
-    def _show_start_when_unfocused(self):
-        if not self.hasFocus():
-            self.setCursorPosition(0)
-
-    def focusOutEvent(self, event):
-        super().focusOutEvent(event)
-        self.setCursorPosition(0)
-
-    def dragEnterEvent(self, event):
-        if isinstance(event.source(), (RoomNameField, RoomDragHandle)):
-            event.acceptProposedAction()
-        else:
-            super().dragEnterEvent(event)
-
-    def dragMoveEvent(self, event):
-        if isinstance(event.source(), (RoomNameField, RoomDragHandle)):
-            event.acceptProposedAction()
-        else:
-            super().dragMoveEvent(event)
-
-    def dropEvent(self, event):
-        source = event.source()
-        if isinstance(source, (RoomNameField, RoomDragHandle)):
-            self.reorder(source.room_index, self.room_index)
-            # CopyAction prevents QLineEdit from deleting its selected source text.
-            event.setDropAction(Qt.DropAction.CopyAction)
-            event.accept()
-        else:
-            super().dropEvent(event)
-
-
-class RoomDragHandle(QLabel):
-    def __init__(self, index, reorder):
-        super().__init__('â‹®â‹®')
-        self.room_index = index
-        self.reorder = reorder
-        self.setObjectName('roomDragHandle')
-        self.setAcceptDrops(True)
-        self.setToolTip('Drag to move this room to another position')
-        self.setCursor(Qt.CursorShape.OpenHandCursor)
-
-    def set_highlighted(self, highlighted):
-        self.setProperty('dragHighlight', highlighted)
-        self.style().unpolish(self)
-        self.style().polish(self)
-        self.update()
-
-    def dragEnterEvent(self, event):
-        if isinstance(event.source(), (RoomDragHandle, RoomNameField)) and event.source() is not self:
-            self.set_highlighted(True)
-            event.acceptProposedAction()
-
-    def dragMoveEvent(self, event):
-        if isinstance(event.source(), (RoomDragHandle, RoomNameField)) and event.source() is not self:
-            event.acceptProposedAction()
-
-    def dragLeaveEvent(self, event):
-        self.set_highlighted(False)
-        event.accept()
-
-    def dropEvent(self, event):
-        self.set_highlighted(False)
-        source = event.source()
-        if isinstance(source, (RoomDragHandle, RoomNameField)) and source is not self:
-            self.reorder(source.room_index, self.room_index)
-            event.setDropAction(Qt.DropAction.CopyAction)
-            event.accept()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.start_position = event.position().toPoint()
-        super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if (event.buttons() & Qt.MouseButton.LeftButton and hasattr(self, 'start_position')
-                and (event.position().toPoint() - self.start_position).manhattanLength() >= 10):
-            drag = QDrag(self)
-            mime = QMimeData()
-            mime.setText('room')
-            drag.setMimeData(mime)
-            self.set_highlighted(True)
-            try:
-                drag.exec(Qt.DropAction.CopyAction)
-            finally:
-                self.set_highlighted(False)
-        else:
-            super().mouseMoveEvent(event)
-
-
 class MainWindow(QMainWindow):
     AUTO_OPEN_DELAY_MS = 5000
     AUTO_OPEN_MAX_ATTEMPTS = 6
@@ -244,104 +144,23 @@ class MainWindow(QMainWindow):
         settings_menu.addAction('Open settings folder', self.open_settings_folder)
         menu_button.setMenu(settings_menu)
         tabs.setCornerWidget(menu_button, Qt.Corner.TopRightCorner)
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(38, 10, 38, 32)
-        layout.setSpacing(18)
-        self.room_tray_status_label = QLabel('Start in tray: Off')
-        layout.addWidget(self.room_tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
-        instruction_row = QHBoxLayout()
-        instruction_row.addWidget(QLabel("Enter exact room names. Drag a â‹®â‹® handle or selected text to reorder."))
-        recent_rooms_controls = QVBoxLayout()
-        recent_rooms_controls.setSpacing(2)
-        self.recent_rooms_button = QPushButton("Recently visited")
-        self.recent_rooms_button.setFixedSize(150,35)
-        recent_rooms_controls.addWidget(self.recent_rooms_button)
-        instruction_row.addLayout(recent_rooms_controls)
-        layout.addLayout(instruction_row)
-
-        form = QGridLayout()
-        form.setColumnStretch(2, 1)
-        form.setColumnStretch(4, 1)
-        self.rooms = []
-        self.room_labels = []
-        self.open_room_buttons = []
-        for index in range(5):
-            field = RoomNameField(index, self.reorder_rooms)
-            field.setPlaceholderText(f"Room {index + 1} name")
-            field.setMaximumWidth(580)
-            label = QLabel(f"Room {index + 1}:")
-            form.addWidget(RoomDragHandle(index, self.reorder_rooms), index, 0)
-            form.addWidget(label, index, 1)
-            form.addWidget(field, index, 2)
-            open_button = QPushButton("Open")
-            open_button.setEnabled(False)
-            open_button.clicked.connect(lambda checked=False, i=index: self.toggle_configured_room(i))
-            field.textChanged.connect(self.update_room_buttons)
-            form.addWidget(open_button, index, 3)
-            self.rooms.append(field)
-            self.room_labels.append(label)
-            self.open_room_buttons.append(open_button)
-        self.delay = QDoubleSpinBox()
-        self.delay.setRange(5, 60)
-        self.delay.setValue(5)
-        self.delay.setSuffix(" seconds")
-        self.delay.setMaximumWidth(580)
-        form.addWidget(QLabel("Delay between rooms:"), 5, 0, 1, 2)
-        form.addWidget(self.delay, 5, 2)
-        self.start_button = QPushButton("Open rooms")
-        form.addWidget(self.start_button, 5, 3)
-        self.close_all_button = QPushButton("Close all")
-        self.close_all_button.setEnabled(False)
-        room_columns = QHBoxLayout()
-        room_columns.addLayout(form, 3)
-        other_panel = QVBoxLayout()
-        other_panel.addWidget(QLabel('Other open rooms'))
-        self.other_rooms_scroll = QScrollArea()
-        self.other_rooms_scroll.setWidgetResizable(True)
-        self.other_rooms_scroll.setMinimumWidth(250)
-        self.other_rooms_scroll.setMaximumHeight(260)
-        other_container = QWidget()
-        self.other_rooms_layout = QVBoxLayout(other_container)
-        self.other_rooms_layout.setContentsMargins(0, 0, 0, 0)
-        self.other_rooms_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.other_rooms_scroll.setWidget(other_container)
-        other_panel.addWidget(self.other_rooms_scroll)
-        other_panel.addWidget(self.close_all_button, alignment=Qt.AlignmentFlag.AlignLeft)
-        room_columns.addLayout(other_panel, 2)
-        layout.addLayout(room_columns)
-
-        layout.addWidget(QLabel("Open Paltalk and display the My Rooms / Rooms view before starting."))
-        buttons = QHBoxLayout()
-        self.regular_button = QPushButton("Regular (3 rooms)")
-        self.vip_button = QPushButton("VIP (5 rooms)")
-        self.regular_button.setObjectName("regularModeButton")
-        self.vip_button.setObjectName("vipModeButton")
-        for button in (self.regular_button, self.vip_button):
-            button.setFixedSize(150,35)
-            button.setCheckable(True)
-        self.mode_group = QButtonGroup(self)
-        self.mode_group.setExclusive(True)
-        self.mode_group.addButton(self.regular_button)
-        self.mode_group.addButton(self.vip_button)
-        self.regular_button.setChecked(True)
-
-        self.auto_open_button = QPushButton("Open when Paltalk starts")
-        self.auto_open_button.setFixedSize(180,35)
-        self.auto_open_button.setObjectName("autoOpenButton")
-        self.auto_open_button.setCheckable(True)
-
-        for button in (
-            self.regular_button, self.vip_button, self.auto_open_button,
-        ):
-            buttons.addWidget(button)
-        buttons.addStretch()
-        layout.addLayout(buttons)
-
-        self.log = QPlainTextEdit()
-        self.log.setReadOnly(True)
-        layout.addWidget(self.log)
-        tabs.addTab(page, "Room Opener")
+        self.room_opener_tab = RoomOpenerTab(self)
+        self.auto_open_button = self.room_opener_tab.auto_open_button
+        self.close_all_button = self.room_opener_tab.close_all_button
+        self.delay = self.room_opener_tab.delay
+        self.log = self.room_opener_tab.log
+        self.mode_group = self.room_opener_tab.mode_group
+        self.open_room_buttons = self.room_opener_tab.open_room_buttons
+        self.other_rooms_layout = self.room_opener_tab.other_rooms_layout
+        self.other_rooms_scroll = self.room_opener_tab.other_rooms_scroll
+        self.recent_rooms_button = self.room_opener_tab.recent_rooms_button
+        self.regular_button = self.room_opener_tab.regular_button
+        self.room_labels = self.room_opener_tab.room_labels
+        self.room_tray_status_label = self.room_opener_tab.room_tray_status_label
+        self.rooms = self.room_opener_tab.rooms
+        self.start_button = self.room_opener_tab.start_button
+        self.vip_button = self.room_opener_tab.vip_button
+        tabs.addTab(self.room_opener_tab, "Room Opener")
         self.create_camera_tab(tabs)
         self.advert_blocker_tab = AdvertBlockerTab(self.log)
         tabs.addTab(self.advert_blocker_tab, 'Advert Blocker')

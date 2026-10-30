@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QWidget
 from paltalk_room_opener import settings
 from paltalk_room_opener.camera_automation import ManualCameraTracker
 from paltalk_room_opener.main_window import MainWindow
-from paltalk_room_opener.ui.manual_camera_prompt import ManualCameraPromptController
+from paltalk_room_opener.ui_tabs.manual_camera_prompt import ManualCameraPromptController
 from paltalk_room_opener.worker import CameraWorker
 
 

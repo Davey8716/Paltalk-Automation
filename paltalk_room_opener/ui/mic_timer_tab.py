@@ -3,7 +3,7 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
-from .worker import MicTimerWorker
+from ..worker import MicTimerWorker
 
 
 class MicTimerTab(QWidget):

@@ -14,10 +14,10 @@ from PySide6.QtWidgets import (
 from . import settings
 from .camera_name_list import CameraNameDelegate, CameraNameList, LIVE_ROLE
 from .foreground import ForegroundTracker
-from .manual_camera_prompt import ManualCameraPromptController
-from .advert_blocker_tab import AdvertBlockerTab
-from .admin_actions_tab import AdminActionsTab
-from .mic_timer_tab import MicTimerTab
+from .ui.manual_camera_prompt import ManualCameraPromptController
+from .ui.advert_blocker_tab import AdvertBlockerTab
+from .ui.admin_actions_tab import AdminActionsTab
+from .ui.mic_timer_tab import MicTimerTab
 from .styles import APP_STYLE
 from .worker import CameraWorker, ChatReaderWorker, CloseAllRoomsWorker, CloseRoomWorker, MicTimerWorker, PaltalkProcessWorker, RecentRoomsWorker, RoomStateWorker, RoomWorker
 from paltalk_adblocker.overlay import AdvertOverlay

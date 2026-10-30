@@ -8,7 +8,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from paltalk_room_opener.mic_timer import MicTimeTracker, talking_now
 from paltalk_room_opener.worker import MicTimerWorker
-from paltalk_room_opener.mic_timer_tab import MicTimerTab
+from paltalk_room_opener.ui.mic_timer_tab import MicTimerTab
 from PySide6.QtWidgets import QApplication, QPlainTextEdit
 
 

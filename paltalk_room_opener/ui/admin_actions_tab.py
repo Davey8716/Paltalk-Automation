@@ -3,8 +3,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QListWidget, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
-from . import settings
-from .worker import ChatReaderWorker
+from .. import settings
+from ..worker import ChatReaderWorker
 
 
 class AdminActionsTab(QWidget):

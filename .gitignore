@@ -1,2 +1,8 @@
 __pycache__/
 *.pyc
+# Local application data, if copied into the repository.
+room_names.json
+camera_names.json
+admin_actions.json
+app_state.json
+recently visited.json

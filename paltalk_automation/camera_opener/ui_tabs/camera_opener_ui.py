@@ -1,6 +1,7 @@
 """Camera opener interface and actions."""
 
 from pathlib import Path
+from html import escape
 import re
 
 from PySide6.QtCore import QSize, Qt, QTimer
@@ -510,6 +511,27 @@ class CameraOpenerUi:
         if self.camera_worker is None:
             log.appendHtml('<span style="color: #e5484d;">Camera monitoring stopped.</span>')
 
+    def append_camera_message(self, message):
+        marker = 'OCR reading differences (rows may still match):\n'
+        if marker not in message:
+            self.camera_log.appendPlainText(message)
+            return
+        before, unmatched = message.split(marker, 1)
+        if before:
+            self.camera_log.appendPlainText(before.rstrip())
+        self.camera_log.appendHtml(
+            '<span style="color: #e5484d; white-space: pre-wrap;">'
+            + escape(marker + unmatched).replace('\n', '<br>') + '</span>'
+        )
+
+    def append_camera_failure(self, message):
+        if ': not visible or ambiguous.' in message:
+            self.camera_failed_log.appendHtml(
+                '<span style="color: #e5484d;">' + escape(message) + '</span>'
+            )
+        else:
+            self.camera_failed_log.appendPlainText(message)
+
     def start_cameras(self, automatic=False):
         if self.camera_worker:
             return
@@ -524,9 +546,9 @@ class CameraOpenerUi:
             log.appendHtml('<span style="color: #35b86b;">Camera monitoring started.</span>')
         self.camera_worker = CameraWorker(names, self.camera_portrait_adjustment.isChecked(),
                                           self.camera_manual_prompt.isChecked())
-        self.camera_worker.message.connect(self.camera_log.appendPlainText)
+        self.camera_worker.message.connect(self.append_camera_message)
         self.camera_worker.invoked.connect(self.camera_invoked_log.appendPlainText)
-        self.camera_worker.failed.connect(self.camera_failed_log.appendPlainText)
+        self.camera_worker.failed.connect(self.append_camera_failure)
         self.camera_worker.live_status.connect(self.update_camera_live_status)
         self.camera_worker.manual_opened.connect(self.camera_prompts.queue)
         self.camera_worker.finished.connect(self.cameras_finished)

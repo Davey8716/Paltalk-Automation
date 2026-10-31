@@ -227,7 +227,8 @@ class CameraTests(unittest.TestCase):
         self.assertEqual(len(_match_rows(rows, names, 'Thai_mafia1')[0]), 2)
 
     def test_punctuation_fallback_and_exact_precedence(self):
-        for saved, reading in [('hiraya_01', 'hiraya-01'), ('hiraya-01', 'hiraya_01')]:
+        for saved, reading in [('hiraya_01', 'hiraya-01'), ('hiraya-01', 'hiraya_01'),
+                               ('celia_8_22_2025', 'celia-8.22.2025')]:
             rows = [((reading,), 'available', object(), 10)]
             matches, conflict = _match_rows(rows, [saved], saved)
             self.assertEqual(len(matches), 1)

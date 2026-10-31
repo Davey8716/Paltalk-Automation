@@ -235,7 +235,7 @@ def _match_rows(rows, names, target):
     configured = {_normal(name) for name in names}
     wanted = _normal(target)
     def punctuation_key(value):
-        return value.replace('-', '_')
+        return value.replace('-', '_').replace('.', '_')
 
     matches = []
     conflict = False
@@ -450,6 +450,20 @@ class CameraScanner:
         third_image = third_image.resize((round(width * scale), round(height * scale)), Image.Resampling.LANCZOS)
         progress('checking name readings')
         third_lines = _ocr(third_image, stopped)
+        # The original pass may miss the whole name. Use the enlarged pass to
+        # locate the first word before looking for a separate badge as well.
+        for index, (center, _, _, button_x, section) in enumerate(buttons):
+            if index in boundaries:
+                continue
+            words = _section_words(_row_words(enhanced_lines, center, button_x, scale), section)
+            if not words:
+                continue
+            top = max(0, int(center - 10))
+            bottom = min(height, int(center + 10))
+            badges = [box for box in _badge_boxes(image, 0, top, button_x, bottom)
+                      if box[0] >= words[0]['right'] + 1]
+            if badges:
+                boundaries[index] = badges[0][0]
         rows = []
         cached_rows = []
         self.ocr_comparisons = []
@@ -560,7 +574,7 @@ def _watcher_diagnostics(scanner, rows, log):
     diagnostics = [f'Visible section text read by OCR:\n{read}',
                    f'OCR lines matched to camera buttons:\n{detected}']
     if scanner.ocr_comparisons:
-        diagnostics.append('Unmatched OCR rows:\n' + '\n'.join(scanner.ocr_comparisons))
+        diagnostics.append('OCR reading differences (rows may still match):\n' + '\n'.join(scanner.ocr_comparisons))
     log('\n\n'.join(diagnostics))
 
 

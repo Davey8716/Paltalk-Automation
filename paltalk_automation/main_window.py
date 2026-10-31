@@ -37,6 +37,8 @@ class MainWindow(CameraOpenerUi, RoomOpenerUi, SettingsMenuUi, TrayUi, QMainWind
         self._closing_pending = False
         self.shutdown_coordinator = ShutdownCoordinator(self)
         self._quitting = False
+        self._camera_original_size = None
+        self._camera_expanded_size = None
         self.tray_icon = None
         self.foreground_tracker = ForegroundTracker()
         self.paltalk_was_running = False
@@ -82,6 +84,8 @@ class MainWindow(CameraOpenerUi, RoomOpenerUi, SettingsMenuUi, TrayUi, QMainWind
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             self.log.appendPlainText(f'Could not load app state: {exc}')
         tabs.currentChanged.connect(self.save_selected_tab)
+        tabs.currentChanged.connect(self.resize_for_camera_tab)
+        self.resize_for_camera_tab(tabs.currentIndex())
         self.start_in_tray.toggled.connect(self.save_start_in_tray)
         self.start_in_tray.toggled.connect(self.update_tray_status)
         self.advert_blocker_tab.advert_toggle.toggled.connect(self.advert_blocker_tab.set_advert_overlay_enabled)
@@ -107,6 +111,26 @@ class MainWindow(CameraOpenerUi, RoomOpenerUi, SettingsMenuUi, TrayUi, QMainWind
             settings.save_app_state({0: 'room_opener', 1: 'camera_opener', 2: 'advert_blocker', 3: 'admin_actions', 4: 'timer'}.get(index, 'room_opener'))
         except OSError as exc:
             self.log.appendPlainText(f'Could not save app state: {exc}')
+
+    def resize_for_camera_tab(self, index):
+        if index == 1:
+            if self._camera_original_size is not None:
+                return
+            self._camera_original_size = self.size()
+            screen = self.screen() or QApplication.primaryScreen()
+            available = screen.availableGeometry() if screen else None
+            target_width = max(self.width(), 1880)
+            if available:
+                target_width = min(target_width, available.width())
+            self.resize(target_width, self.height())
+            self._camera_expanded_size = self.size()
+            if available and self.frameGeometry().right() > available.right():
+                self.move(max(available.left(), available.right() - self.frameGeometry().width() + 1), self.y())
+        elif self._camera_original_size is not None:
+            if self.size() == self._camera_expanded_size:
+                self.resize(self._camera_original_size)
+            self._camera_original_size = None
+            self._camera_expanded_size = None
 
     def save_start_in_tray(self, enabled):
         try:

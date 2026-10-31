@@ -25,11 +25,18 @@ class CameraOpenerUi:
     def create_camera_tab(self, tabs):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(38, 10, 38, 32)
+        layout.setContentsMargins(24, 4, 24, 12)
+        layout.setSpacing(3)
         self.camera_tray_status_label = QLabel('Start in tray: Off')
         layout.addWidget(self.camera_tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addWidget(QLabel('Monitor up to 200 usernames in the visible On Cam list of the rooms you enter.\n' \
         'This is a global camera monitor across rooms and is not room specific.'))
+        content = QHBoxLayout()
+        content.setSpacing(8)
+        names_area = QVBoxLayout()
+        names_area.setSpacing(3)
+        content.addLayout(names_area, 2)
+        layout.addLayout(content, 1)
         sort_controls = QHBoxLayout()
         sort_controls.addStretch()
         self.camera_alphabetical = QPushButton('Alphabetical')
@@ -52,7 +59,7 @@ class CameraOpenerUi:
         self.camera_export_flash.timeout.connect(self.flash_camera_export)
         self.camera_export_flashes_left = 0
         sort_controls.addWidget(self.camera_export)
-        layout.addLayout(sort_controls)
+        names_area.addLayout(sort_controls)
         self.camera_names = CameraNameList()
         self.camera_next_order = 1
         self.camera_names.setItemDelegate(CameraNameDelegate(self.camera_names))
@@ -64,7 +71,7 @@ class CameraOpenerUi:
         self.camera_names_scroll = QScrollArea()
         self.camera_names_scroll.setWidgetResizable(True)
         self.camera_names_scroll.setWidget(self.camera_names)
-        layout.addWidget(self.camera_names_scroll, 2)
+        names_area.addWidget(self.camera_names_scroll, 1)
         entry = QHBoxLayout()
         self.camera_entry = CameraEntryField()
         self.camera_entry.setPlaceholderText('Exact Paltalk username')
@@ -73,7 +80,7 @@ class CameraOpenerUi:
         entry.addWidget(self.camera_entry)
         entry.addWidget(add)
         entry.addWidget(remove)
-        layout.addLayout(entry)
+        names_area.addLayout(entry)
         controls = QHBoxLayout()
         self.camera_auto = QPushButton('Start when Paltalk starts')
         self.camera_auto.setObjectName('autoOpenButton')
@@ -86,22 +93,28 @@ class CameraOpenerUi:
         self.camera_portrait_adjustment.setCheckable(True)
         self.camera_portrait_adjustment.setChecked(True)
         self.camera_portrait_adjustment.setText('Portrait adjustment: On')
-
-        
-        self.camera_stop.setEnabled(False)
-        for button in (self.camera_auto, self.camera_start, self.camera_stop, self.camera_portrait_adjustment):
-            button.setFixedSize(200, 35)
-            controls.addWidget(button)
-        self.camera_start.setFixedSize(150, 35)
-        self.camera_stop.setFixedSize(150, 35)
-        controls.addStretch()
-        layout.addLayout(controls)
         self.camera_manual_prompt = QPushButton('Prompt to add manually opened cameras: Off')
         self.camera_manual_prompt.setObjectName('autoOpenButton')
         self.camera_manual_prompt.setCheckable(True)
         self.camera_manual_prompt.setToolTip('While monitoring, prompt to add newly opened cameras in the visible room.')
-        layout.addWidget(self.camera_manual_prompt, alignment=Qt.AlignmentFlag.AlignLeft)
-        output = QHBoxLayout()
+
+        
+        self.camera_stop.setEnabled(False)
+        for button in (self.camera_auto, self.camera_start, self.camera_stop, self.camera_portrait_adjustment):
+            button.setMinimumHeight(35)
+        controls.addWidget(self.camera_auto)
+        controls.addWidget(self.camera_manual_prompt)
+        controls.addStretch()
+        names_area.addLayout(controls)
+        controls = QHBoxLayout()
+        self.camera_start.setFixedSize(150, 35)
+        self.camera_stop.setFixedSize(150, 35)
+        controls.addWidget(self.camera_start)
+        controls.addWidget(self.camera_stop)
+        controls.addWidget(self.camera_portrait_adjustment)
+        controls.addStretch()
+        names_area.addLayout(controls)
+        output = QVBoxLayout()
 
         def clear_log_button(label):
             button = QPushButton()
@@ -148,7 +161,7 @@ class CameraOpenerUi:
         for log in (self.camera_log, self.camera_invoked_log, self.camera_failed_log):
             self.clear_camera_log(log)
         output.addLayout(activity_column, 1)
-        layout.addLayout(output, 1)
+        content.addLayout(output, 1)
         tabs.addTab(page, 'Camera Opener')
         try:
             data = settings.load_camera_settings()

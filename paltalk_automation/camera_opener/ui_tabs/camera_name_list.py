@@ -35,13 +35,13 @@ class CameraNameList(QListWidget):
         self.setEditTriggers(QAbstractItemView.EditTrigger.DoubleClicked | QAbstractItemView.EditTrigger.EditKeyPressed)
         self.setSpacing(0)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         # QListView reserves one grid row at the bottom when wrapping.
         self.setFixedHeight(842)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.setGridSize(QSize(max(1, (self.viewport().width() - 16) // 6 - 15), 20))
+        self.setGridSize(QSize(max(120, (self.viewport().width() - 16) // 6 - 15), 20))
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete and self.state() != QAbstractItemView.State.EditingState:

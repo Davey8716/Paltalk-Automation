@@ -6,10 +6,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QTabWidget, QWidget
 
 from paltalk_automation import windows_startup
 from paltalk_automation.ui_tabs.settings_menu_ui import SettingsMenuUi
+from paltalk_automation.ui_tabs.tray_ui import TrayUi
 
 
 class MenuWindow(SettingsMenuUi, QWidget):
@@ -75,6 +77,73 @@ class WindowsStartupTests(unittest.TestCase):
             window = MenuWindow()
             self.assertFalse(window.start_with_windows.isEnabled())
             warning.assert_called_once()
+            window.close()
+
+    def test_tray_toggle_tracks_setting_and_failed_change(self):
+        class Window(MenuWindow, TrayUi):
+            def __init__(self):
+                super().__init__()
+                self.start_button = MagicMock()
+                self.camera_start = MagicMock()
+                self.camera_stop = MagicMock()
+                self.auto_open_button = QAction(self)
+                self.camera_auto = QAction(self)
+                self.camera_portrait_adjustment = QAction(self)
+                for action in (self.auto_open_button, self.camera_auto, self.camera_portrait_adjustment):
+                    action.setCheckable(True)
+
+        with patch.object(windows_startup, 'startup_enabled', return_value=False), \
+             patch.object(windows_startup, 'set_startup') as save, \
+             patch('paltalk_automation.ui_tabs.tray_ui.QSystemTrayIcon.isSystemTrayAvailable', return_value=True), \
+             patch('paltalk_automation.ui_tabs.settings_menu_ui.QMessageBox.warning'):
+            window = Window()
+            window.setup_tray()
+            action = next(a for a in window.tray_icon.contextMenu().actions() if a.text() == 'Start with Windows')
+            action.trigger()
+            self.assertTrue(window.start_with_windows.isChecked())
+            self.assertTrue(action.isChecked())
+            window.start_with_windows.setChecked(False)
+            self.assertFalse(action.isChecked())
+            save.side_effect = OSError('denied')
+            action.trigger()
+            self.assertFalse(window.start_with_windows.isChecked())
+            self.assertFalse(action.isChecked())
+            window.tray_icon.hide()
+            window.close()
+
+    def test_tray_camera_action_uses_current_controls(self):
+        class Window(MenuWindow, TrayUi):
+            def __init__(self):
+                super().__init__()
+                self.start_button = MagicMock()
+                self.camera_start = MagicMock()
+                self.camera_stop = MagicMock()
+                self.auto_open_button = QAction(self)
+                self.camera_auto = QAction(self)
+                self.camera_portrait_adjustment = QAction(self)
+
+        with patch.object(windows_startup, 'startup_enabled', return_value=False), \
+             patch('paltalk_automation.ui_tabs.tray_ui.QSystemTrayIcon.isSystemTrayAvailable', return_value=True):
+            window = Window()
+            window.start_button.text.return_value = 'Open rooms'
+            window.start_button.isEnabled.return_value = True
+            window.camera_start.isEnabled.return_value = True
+            window.camera_stop.isEnabled.return_value = False
+            window.setup_tray()
+            menu = window.tray_icon.contextMenu()
+            action = next(a for a in menu.actions() if a.text() == 'Start camera monitoring')
+            action.trigger()
+            window.camera_start.click.assert_called_once()
+            window.camera_start.isEnabled.return_value = False
+            window.camera_stop.isEnabled.return_value = True
+            menu.aboutToShow.emit()
+            self.assertEqual(action.text(), 'Stop camera monitoring')
+            action.trigger()
+            window.camera_stop.click.assert_called_once()
+            window.camera_stop.isEnabled.return_value = False
+            menu.aboutToShow.emit()
+            self.assertFalse(action.isEnabled())
+            window.tray_icon.hide()
             window.close()
         with patch.object(windows_startup, 'startup_enabled', return_value=False), \
              patch.object(windows_startup, 'set_startup', side_effect=OSError('denied')), \

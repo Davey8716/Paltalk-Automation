@@ -25,6 +25,34 @@ class TrayUi:
             room_action.setText(self.start_button.text())
             room_action.setEnabled(self.start_button.isEnabled())
         menu.aboutToShow.connect(update_room_action)
+        camera_action = menu.addAction('Start camera monitoring')
+        def update_camera_action():
+            if self.camera_stop.isEnabled():
+                camera_action.setText('Stop camera monitoring')
+                camera_action.setEnabled(True)
+            else:
+                camera_action.setText('Start camera monitoring')
+                camera_action.setEnabled(self.camera_start.isEnabled())
+        def toggle_camera_monitoring():
+            if self.camera_stop.isEnabled():
+                self.camera_stop.click()
+            elif self.camera_start.isEnabled():
+                self.camera_start.click()
+        camera_action.triggered.connect(toggle_camera_monitoring)
+        menu.aboutToShow.connect(update_camera_action)
+        update_camera_action()
+        startup_action = menu.addAction('Start with Windows')
+        startup_action.setCheckable(True)
+        def sync_startup_action():
+            startup_action.setChecked(self.start_with_windows.isChecked())
+            startup_action.setEnabled(self.start_with_windows.isEnabled())
+        def toggle_startup(enabled):
+            self.start_with_windows.setChecked(enabled)
+            sync_startup_action()
+        startup_action.triggered.connect(toggle_startup)
+        self.start_with_windows.toggled.connect(lambda _: sync_startup_action())
+        menu.aboutToShow.connect(sync_startup_action)
+        sync_startup_action()
         for text, button in (
             ("Start in tray", self.start_in_tray),
             ("Open rooms when Paltalk starts", self.auto_open_button),

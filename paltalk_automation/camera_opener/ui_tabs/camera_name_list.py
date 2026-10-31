@@ -41,7 +41,7 @@ class CameraNameList(QListWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.setGridSize(QSize(max(1, (self.viewport().width() - 16) // 6), 24))
+        self.setGridSize(QSize(max(1, (self.viewport().width() - 16) // 6 - 15), 20))
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Delete and self.state() != QAbstractItemView.State.EditingState:

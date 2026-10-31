@@ -555,13 +555,13 @@ class ManualCameraTracker:
 
 
 def _watcher_diagnostics(scanner, rows, log):
-    read = '\n\n'.join(scanner.ocr_lines) or '(none)'
-    detected = '\n\n'.join(f'{row[4]}: {_readings(row)!r}' for row in rows) or '(none)'
-    diagnostics = [f'Visible section text read by OCR:\n\n{read}',
-                   f'OCR lines matched to camera buttons:\n\n{detected}']
+    read = '\n'.join(scanner.ocr_lines) or '(none)'
+    detected = '\n'.join(f'{row[4]}: {_readings(row)!r}' for row in rows) or '(none)'
+    diagnostics = [f'Visible section text read by OCR:\n{read}',
+                   f'OCR lines matched to camera buttons:\n{detected}']
     if scanner.ocr_comparisons:
-        diagnostics.append('Unmatched OCR rows:\n\n' + '\n\n'.join(scanner.ocr_comparisons))
-    log('\n\n' + '\n\n'.join(diagnostics) + '\n')
+        diagnostics.append('Unmatched OCR rows:\n' + '\n'.join(scanner.ocr_comparisons))
+    log('\n\n'.join(diagnostics))
 
 
 def _watcher_name_status(rows, names, name):

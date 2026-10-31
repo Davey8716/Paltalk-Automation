@@ -137,7 +137,7 @@ class PromptTests(unittest.TestCase):
 
     def test_empty_list_can_start_only_when_prompt_enabled(self):
         button = SimpleNamespace(isChecked=lambda: False)
-        log = SimpleNamespace(appendPlainText=Mock())
+        log = SimpleNamespace(appendPlainText=Mock(), appendHtml=Mock(), clear=Mock())
         w = SimpleNamespace(camera_worker=None, camera_username_list=lambda: [],
                             camera_manual_prompt=button, camera_log=log,
                             save_camera_settings=Mock(return_value=True))

@@ -121,7 +121,7 @@ class CameraOpenerUi:
         invoked_column.addLayout(invoked_header)
         self.camera_invoked_log = QPlainTextEdit()
         self.camera_invoked_log.setReadOnly(True)
-        invoked_clear.clicked.connect(self.camera_invoked_log.clear)
+        invoked_clear.clicked.connect(lambda: self.clear_camera_log(self.camera_invoked_log))
         invoked_column.addWidget(self.camera_invoked_log)
         output.addLayout(invoked_column, 1)
         failed_column = QVBoxLayout()
@@ -132,7 +132,7 @@ class CameraOpenerUi:
         failed_column.addLayout(failed_header)
         self.camera_failed_log = QPlainTextEdit()
         self.camera_failed_log.setReadOnly(True)
-        failed_clear.clicked.connect(self.camera_failed_log.clear)
+        failed_clear.clicked.connect(lambda: self.clear_camera_log(self.camera_failed_log))
         failed_column.addWidget(self.camera_failed_log)
         output.addLayout(failed_column, 1)
         activity_column = QVBoxLayout()
@@ -143,8 +143,10 @@ class CameraOpenerUi:
         activity_column.addLayout(activity_header)
         self.camera_log = QPlainTextEdit()
         self.camera_log.setReadOnly(True)
-        activity_clear.clicked.connect(self.camera_log.clear)
+        activity_clear.clicked.connect(lambda: self.clear_camera_log(self.camera_log))
         activity_column.addWidget(self.camera_log)
+        for log in (self.camera_log, self.camera_invoked_log, self.camera_failed_log):
+            self.clear_camera_log(log)
         output.addLayout(activity_column, 1)
         layout.addLayout(output, 1)
         tabs.addTab(page, 'Camera Opener')
@@ -490,6 +492,11 @@ class CameraOpenerUi:
         self.save_camera_settings()
 
 
+    def clear_camera_log(self, log):
+        log.clear()
+        if self.camera_worker is None:
+            log.appendHtml('<span style="color: #e5484d;">Camera monitoring stopped.</span>')
+
     def start_cameras(self, automatic=False):
         if self.camera_worker:
             return
@@ -499,6 +506,9 @@ class CameraOpenerUi:
             return
         if not self.save_camera_settings():
             return
+        for log in (self.camera_log, self.camera_invoked_log, self.camera_failed_log):
+            log.clear()
+            log.appendHtml('<span style="color: #35b86b;">Camera monitoring started.</span>')
         self.camera_worker = CameraWorker(names, self.camera_portrait_adjustment.isChecked(),
                                           self.camera_manual_prompt.isChecked())
         self.camera_worker.message.connect(self.camera_log.appendPlainText)
@@ -509,7 +519,7 @@ class CameraOpenerUi:
         self.camera_worker.finished.connect(self.cameras_finished)
         self.camera_start.setEnabled(False)
         self.camera_stop.setEnabled(True)
-        self.camera_log.appendPlainText('Camera monitoring started. Keep the On Cam list visible.')
+        self.camera_log.appendPlainText('Keep the On Cam list visible.')
         self.camera_worker.start()
 
 
@@ -529,9 +539,11 @@ class CameraOpenerUi:
         self.camera_worker = None
         self.camera_start.setEnabled(True)
         self.camera_stop.setEnabled(False)
-        self.camera_log.appendPlainText('Camera monitoring stopped.')
         if self.camera_restart_pending:
             self.camera_restart_pending = False
             self.start_cameras()
+        else:
+            for log in (self.camera_log, self.camera_invoked_log, self.camera_failed_log):
+                self.clear_camera_log(log)
 
 

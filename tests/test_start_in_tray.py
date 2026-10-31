@@ -15,6 +15,20 @@ from paltalk_automation.foreground import ForegroundTracker
 
 
 class StartInTrayTests(unittest.TestCase):
+    def test_startup_status_updates_all_tab_labels(self):
+        window = MagicMock()
+        window.windows_startup_status_labels = [MagicMock() for _ in range(5)]
+        window.start_with_windows.isEnabled.return_value = True
+        for enabled in (True, False):
+            window.start_with_windows.isChecked.return_value = enabled
+            MainWindow.update_windows_startup_status(window)
+            for label in window.windows_startup_status_labels:
+                label.setText.assert_called_with(f'Start with Windows: {"On" if enabled else "Off"}')
+        window.start_with_windows.isEnabled.return_value = False
+        MainWindow.update_windows_startup_status(window)
+        for label in window.windows_startup_status_labels:
+            label.setText.assert_called_with('Start with Windows: Unavailable')
+
     def test_tray_click_toggles_active_window_and_restores_inactive_window(self):
         for visible, minimized, active, hides in (
             (True, False, True, True),

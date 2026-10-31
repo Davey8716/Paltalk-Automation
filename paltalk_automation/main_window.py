@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QTabWidget,
+    QApplication, QLabel, QMainWindow, QTabWidget,
 )
 
 from . import settings
@@ -55,6 +55,19 @@ class MainWindow(CameraOpenerUi, RoomOpenerUi, SettingsMenuUi, TrayUi, QMainWind
         tabs.addTab(self.admin_actions_tab, 'Admin Actions')
         self.mic_timer_tab = MicTimerTab(is_closing=lambda: self._closing_pending)
         tabs.addTab(self.mic_timer_tab, 'Mic Timer')
+        self.windows_startup_status_labels = []
+        for page in (self.room_opener_tab, self.admin_actions_tab, self.advert_blocker_tab, self.mic_timer_tab):
+            if page in (self.advert_blocker_tab, self.mic_timer_tab):
+                page.tray_status_label = QLabel('Start in tray: Off')
+                page.layout().insertWidget(0, page.tray_status_label, alignment=Qt.AlignmentFlag.AlignRight)
+            label = QLabel()
+            page.layout().insertWidget(1, label, alignment=Qt.AlignmentFlag.AlignRight)
+            self.windows_startup_status_labels.append(label)
+        camera_label = QLabel()
+        tabs.widget(1).layout().insertWidget(1, camera_label, alignment=Qt.AlignmentFlag.AlignRight)
+        self.windows_startup_status_labels.append(camera_label)
+        self.update_windows_startup_status()
+        self.start_with_windows.toggled.connect(lambda _: self.update_windows_startup_status())
         self.setCentralWidget(tabs)
         # Measure after the inherited stylesheet has been applied to the button.
         self.start_button.setMinimumWidth(self.start_button.sizeHint().width())
@@ -106,6 +119,13 @@ class MainWindow(CameraOpenerUi, RoomOpenerUi, SettingsMenuUi, TrayUi, QMainWind
         self.admin_actions_tab.tray_status_label.setText(text)
         self.room_tray_status_label.setText(text)
         self.camera_tray_status_label.setText(text)
+        self.advert_blocker_tab.tray_status_label.setText(text)
+        self.mic_timer_tab.tray_status_label.setText(text)
+
+    def update_windows_startup_status(self):
+        state = ('On' if self.start_with_windows.isChecked() else 'Off') if self.start_with_windows.isEnabled() else 'Unavailable'
+        for label in self.windows_startup_status_labels:
+            label.setText(f'Start with Windows: {state}')
 
 
 

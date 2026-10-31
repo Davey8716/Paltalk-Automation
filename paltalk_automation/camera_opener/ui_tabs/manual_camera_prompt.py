@@ -1,5 +1,6 @@
 """Queue and display prompts for manually opened cameras."""
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QInputDialog
 
 
@@ -37,6 +38,7 @@ class ManualCameraPromptController:
             self.show_next()
             return
         dialog = QInputDialog(self.owner)
+        dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         dialog.setWindowTitle('Add camera username')
         dialog.setLabelText('Check the detected username and correct it if needed:')
         dialog.setTextValue(name)
@@ -56,4 +58,6 @@ class ManualCameraPromptController:
 
         dialog.finished.connect(finished)
         dialog.open()
+        dialog.raise_()
+        dialog.activateWindow()
 

@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from PySide6.QtWidgets import QApplication, QDialog, QWidget
+from PySide6.QtCore import Qt
 
 from paltalk_automation import settings
 from paltalk_automation.camera_opener.backend.camera_automation import ManualCameraTracker
@@ -113,6 +114,12 @@ class PromptTests(unittest.TestCase):
         w.camera_prompts.queue('Bob')
         w.camera_prompts.dialog.done(QDialog.DialogCode.Rejected)
         w.add_camera_username.assert_called_once()
+
+    def test_prompt_is_a_topmost_window(self):
+        self.window.camera_prompts.queue('Alice')
+        dialog = self.window.camera_prompts.dialog
+        self.assertTrue(dialog.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        self.assertTrue(dialog.isVisible())
 
     def test_cancel_clears_pending_and_listed_names_are_skipped(self):
         w = self.window

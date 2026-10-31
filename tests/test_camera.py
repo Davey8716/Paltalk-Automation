@@ -10,11 +10,19 @@ from PIL import Image, ImageDraw
 from paltalk_automation import settings
 from paltalk_automation.camera_opener.backend.camera_automation import (
     CameraScanner, _badge_boxes, _button_section, _camera_error_message, _camera_state, _match_rows, _normal,
-    _adjust_portrait_if_needed, _ocr, _portrait_clip_offset, _row_text, _row_words, _section_words, _sections, _ScanStopped, watch_cameras,
+    _adjust_portrait_if_needed, _ocr, _portrait_clip_offset, _read_sections, _row_text, _row_words, _section_words, _sections, _valid_bounds, _ScanStopped, watch_cameras,
 )
 
 
 class CameraTests(unittest.TestCase):
+    def test_rejects_nonfinite_or_empty_control_bounds(self):
+        self.assertTrue(_valid_bounds(SimpleNamespace(X=-100, Y=0, Width=100, Height=20)))
+        for field, value in [('X', float('inf')), ('Y', float('-inf')),
+                             ('Width', float('nan')), ('Height', 0)]:
+            bounds = dict(X=0, Y=0, Width=100, Height=20)
+            bounds[field] = value
+            self.assertFalse(_valid_bounds(SimpleNamespace(**bounds)))
+
     def test_portrait_window_offset_only_when_right_edge_is_clipped(self):
         portrait = SimpleNamespace(left=3840, top=0, right=4920, bottom=1920)
         landscape = SimpleNamespace(left=0, top=0, right=1920, bottom=1080)
@@ -279,6 +287,23 @@ class CameraTests(unittest.TestCase):
             _sections([lines[1]], 800)
         with self.assertRaises(RuntimeError):
             _sections([lines[0], lines[0]], 800)
+
+    def test_unreadable_headings_retry_with_scaled_contrast(self):
+        image = Image.new('RGB', (300, 800), 'white')
+        retry = [{'text': 'Mic Queue 6', 'top': 20, 'bottom': 40},
+                 {'text': 'On Cam 10', 'top': 400, 'bottom': 430}]
+        with patch('paltalk_automation.camera_opener.backend.camera_automation._ocr', return_value=retry) as ocr:
+            self.assertEqual(_read_sections(image, [], lambda: False),
+                             [('Mic Queue', 20, 200), ('On Cam', 215, 800)])
+            self.assertEqual(ocr.call_args.args[0].size, (600, 1600))
+
+    def test_ambiguous_headings_are_not_retried(self):
+        image = Image.new('RGB', (300, 800))
+        line = {'text': 'On Cam', 'top': 0, 'bottom': 15}
+        with patch('paltalk_automation.camera_opener.backend.camera_automation._ocr') as ocr:
+            with self.assertRaisesRegex(RuntimeError, 'ambiguous'):
+                _read_sections(image, [line, line], lambda: False)
+            ocr.assert_not_called()
 
     def test_queue_position_is_separate_from_username(self):
         def word(text, left, right):

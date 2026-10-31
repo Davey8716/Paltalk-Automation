@@ -3,6 +3,7 @@
 import ctypes
 from ctypes import wintypes
 import json
+import math
 import os
 import subprocess
 import tempfile
@@ -180,6 +181,23 @@ def _sections(lines, height):
     return sections
 
 
+def _read_sections(image, lines, stopped):
+    """Retry unreadable headings with a larger, higher-contrast capture."""
+    try:
+        return _sections(lines, image.height)
+    except RuntimeError as exc:
+        if str(exc) != 'Mic Queue or On Cam heading is not visible or could not be read.':
+            raise
+    scale = 2 if max(image.size) <= 2048 else 1
+    enhanced = ImageOps.autocontrast(ImageOps.grayscale(image))
+    if scale != 1:
+        enhanced = enhanced.resize((image.width * scale, image.height * scale), Image.Resampling.LANCZOS)
+    retry = _ocr(enhanced, stopped)
+    adjusted = [{**line, 'top': line['top'] / scale, 'bottom': line['bottom'] / scale}
+                for line in retry]
+    return _sections(adjusted, image.height)
+
+
 def _button_section(current, button_type, y, height, sections):
     if (current.ControlType != button_type or current.IsOffscreen or
             'MemberContentWidget' not in current.AutomationId):
@@ -242,6 +260,11 @@ def _portrait_clip_offset(monitor, member_right):
     if monitor.right - monitor.left >= monitor.bottom - monitor.top:
         return 0
     return max(0, int(member_right - monitor.right + 1)) if member_right > monitor.right else 0
+
+
+def _valid_bounds(rect):
+    return (all(math.isfinite(value) for value in (rect.X, rect.Y, rect.Width, rect.Height))
+            and rect.Width > 0 and rect.Height > 0)
 
 
 def _reposition_clipped_portrait_window(window, member_right):
@@ -337,13 +360,15 @@ class CameraScanner:
                 c = element.Current
                 if not c.IsOffscreen:
                     rect = c.BoundingRectangle
-                    if rect.Width > 0 and rect.Height > 0:
+                    if _valid_bounds(rect):
                         lists.append((window, element))
         if len(lists) != 1:
             raise RuntimeError('Display one room with its member list visible.')
         window, member_list = lists[0]
         self.room_identity = tuple(member_list.GetRuntimeId())
         rect = member_list.Current.BoundingRectangle
+        if not _valid_bounds(rect):
+            raise RuntimeError('Room member list has invalid screen bounds; retrying.')
         _adjust_portrait_if_needed(self, window, rect, progress)
         left, top = int(rect.X), int(rect.Y)
         width, height = int(rect.Width), int(rect.Height)
@@ -358,6 +383,8 @@ class CameraScanner:
             if c.ControlType != a.ControlType.Button or c.IsOffscreen or 'MemberContentWidget' not in c.AutomationId:
                 continue
             b = c.BoundingRectangle
+            if not _valid_bounds(b):
+                continue
             x, y = int(b.X) - left, int(b.Y) - top
             bw, bh = int(b.Width), int(b.Height)
             if bw <= 0 or bh <= 0 or x < 0 or y < 0 or x + bw > width or y + bh > height:
@@ -379,7 +406,7 @@ class CameraScanner:
         self._ocr_cache = None
         progress('reading the room list')
         lines = _ocr(image, stopped)
-        sections = _sections(lines, height)
+        sections = _read_sections(image, lines, stopped)
         self.ocr_lines = [f"{label}: {line['text'].strip()}"
                           for label, start, end in sections for line in lines
                           if start < (line['top'] + line['bottom']) / 2 < end]

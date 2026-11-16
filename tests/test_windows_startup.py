@@ -3,6 +3,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -89,6 +90,8 @@ class WindowsStartupTests(unittest.TestCase):
                 self.auto_open_button = QAction(self)
                 self.camera_auto = QAction(self)
                 self.camera_portrait_adjustment = QAction(self)
+                self.advert_blocker_tab = SimpleNamespace(advert_toggle=QAction(self))
+                self.advert_blocker_tab.advert_toggle.setCheckable(True)
                 for action in (self.auto_open_button, self.camera_auto, self.camera_portrait_adjustment):
                     action.setCheckable(True)
 
@@ -111,6 +114,33 @@ class WindowsStartupTests(unittest.TestCase):
             window.tray_icon.hide()
             window.close()
 
+    def test_tray_advert_toggle_stays_in_sync(self):
+        class Window(MenuWindow, TrayUi):
+            def __init__(self):
+                super().__init__()
+                self.start_button = MagicMock()
+                self.camera_start = MagicMock()
+                self.camera_stop = MagicMock()
+                self.auto_open_button = QAction(self)
+                self.camera_auto = QAction(self)
+                self.camera_portrait_adjustment = QAction(self)
+                self.advert_blocker_tab = SimpleNamespace(advert_toggle=QAction(self))
+                self.advert_blocker_tab.advert_toggle.setCheckable(True)
+                self.advert_blocker_tab.advert_toggle.setChecked(True)
+
+        with patch.object(windows_startup, 'startup_enabled', return_value=False), \
+             patch('paltalk_automation.ui_tabs.tray_ui.QSystemTrayIcon.isSystemTrayAvailable', return_value=True):
+            window = Window()
+            window.setup_tray()
+            action = next(a for a in window.tray_icon.contextMenu().actions() if a.text() == 'Block adverts')
+            self.assertTrue(action.isChecked())
+            action.trigger()
+            self.assertFalse(window.advert_blocker_tab.advert_toggle.isChecked())
+            window.advert_blocker_tab.advert_toggle.setChecked(True)
+            self.assertTrue(action.isChecked())
+            window.tray_icon.hide()
+            window.close()
+
     def test_tray_camera_action_uses_current_controls(self):
         class Window(MenuWindow, TrayUi):
             def __init__(self):
@@ -121,6 +151,8 @@ class WindowsStartupTests(unittest.TestCase):
                 self.auto_open_button = QAction(self)
                 self.camera_auto = QAction(self)
                 self.camera_portrait_adjustment = QAction(self)
+                self.advert_blocker_tab = SimpleNamespace(advert_toggle=QAction(self))
+                self.advert_blocker_tab.advert_toggle.setCheckable(True)
 
         with patch.object(windows_startup, 'startup_enabled', return_value=False), \
              patch('paltalk_automation.ui_tabs.tray_ui.QSystemTrayIcon.isSystemTrayAvailable', return_value=True):

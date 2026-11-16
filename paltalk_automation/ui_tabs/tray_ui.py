@@ -55,6 +55,7 @@ class TrayUi:
         sync_startup_action()
         for text, button in (
             ("Start in tray", self.start_in_tray),
+            ("Block adverts", self.advert_blocker_tab.advert_toggle),
             ("Open rooms when Paltalk starts", self.auto_open_button),
             ("Start cameras when Paltalk starts", self.camera_auto),
             ("Portrait adjustment", self.camera_portrait_adjustment),
